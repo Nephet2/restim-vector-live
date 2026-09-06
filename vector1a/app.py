@@ -9,6 +9,7 @@ from collections import deque
 from tkinter import filedialog, messagebox, ttk
 
 from .engine import OutputSample, VectorEngine
+from .events import AXIS_AUTHORED, EventEngine
 from .motion import MotionMode, MotionParameters
 from .network import LatestFrameDispatcher, MFPListener, ReStimWebSocketClient
 from .routing import AuthoredAxisRouter
@@ -78,6 +79,29 @@ class CollapsibleSection(ttk.Frame):
 
 
 class VectorApp:
+    DIRECTOR_EVENT_CATALOG = {
+        "mcb_tease": ("Tease", "Slow volume modulation with a moderate pulse rate", 12.0),
+        "mcb_throb": ("Throb", "Pronounced low-rate volume modulation", 10.0),
+        "mcb_calm": ("Calm", "Gentle modulation with a lower pulse rate", 15.0),
+        "mcb_intensity_build": ("Intensity build", "Gradual temporary increase", 10.0),
+        "mcb_release": ("Release", "Gradual temporary reduction", 8.0),
+        "clutch_tranquil": ("Tranquil", "Slow, smooth volume modulation", 20.0),
+        "clutch_pulse_wobble": ("Pulse wobble", "Temporary pulse-width movement", 10.0),
+        "pulse_freq_shift": ("Pulse-frequency shift", "Temporary pulse-frequency offset", 5.0),
+        "pulse_width_shift": ("Pulse-width shift", "Temporary pulse-width offset", 5.0),
+        "volume_shift": ("Volume shift", "Small temporary volume offset", 5.0),
+    }
+    DIRECTOR_EVENT_MIN_SECONDS = 2.0
+    DIRECTOR_EVENT_MAX_SECONDS = 30.0
+    DIRECTOR_EVENT_PARAM_OVERRIDES = {
+        "mcb_tease": {"tease_amplitude": 0.08},
+        "mcb_throb": {"throb_amplitude": 0.10},
+        "mcb_calm": {"calm_amplitude": 0.07},
+        "mcb_intensity_build": {"end_boost": 0.08},
+        "mcb_release": {"volume_drop": -0.10},
+        "clutch_tranquil": {"calm_amplitude": 0.08},
+        "volume_shift": {"shift_start": 0.05, "shift_end": 0.05},
+    }
     FOUR_PHASE_PRESET_FIELDS = (
         "four_phase_return_depth", "four_phase_invert", "four_phase_volume_ceiling",
         "four_phase_volume_modulation", "four_phase_volume_headroom",
@@ -160,7 +184,7 @@ class VectorApp:
         "timeline_script_libraries", "timeline_auto_load_script", "timeline_clock_source",
         "four_phase_host", "four_phase_port",
         "auto_start_mfp", "auto_start_restim", "auto_start_prostate",
-        "director_enabled", "director_host", "director_port",
+        "director_enabled", "director_host", "director_port", "director_events_enabled",
         "top_focus_nominal_ceiling", "top_focus_strength", "bottom_focus_strength",
         "top_spatial_gain_step_percent", "bottom_spatial_gain_step_percent",
         "top_spatial_gain_min_percent", "top_spatial_gain_max_percent",
@@ -239,6 +263,7 @@ class VectorApp:
         self.director_host = tk.StringVar(value="127.0.0.1")
         self.director_port = tk.IntVar(value=11436)
         self.director_status = tk.StringVar(value="DIRECTOR: OFF")
+        self.director_events_enabled = tk.BooleanVar(value=False)
         self._director_window = None
         self.session_ready_status = tk.StringVar(value="SESSION: MANUAL")
         self._startup_in_progress = False
@@ -427,6 +452,8 @@ class VectorApp:
         self._last_health_output_count = 0
 
         self.axis_router = AuthoredAxisRouter()
+        self.event_engine = EventEngine()
+        self._director_event_history: deque[dict] = deque(maxlen=12)
         self.director_bridge = DirectorBridge()
         self.director_server = DirectorServer(self.director_bridge)
         self.orchestrator = SessionOrchestrator(self._set_startup_status)
@@ -2127,6 +2154,25 @@ class VectorApp:
                 "horizons_seconds": [1, 10, 30],
                 "status": "full-funscript lookahead; MFP pattern-sync or internal manual preview clock",
             },
+            "custom_events": {
+                "enabled": bool(self.director_events_enabled.get()),
+                "endpoint": "/v1/event/trigger",
+                "cancel_endpoint": "/v1/event/cancel",
+                "duration_seconds": {
+                    "minimum": self.DIRECTOR_EVENT_MIN_SECONDS,
+                    "maximum": self.DIRECTOR_EVENT_MAX_SECONDS,
+                },
+                "available": [
+                    {
+                        "id": event_id,
+                        "label": details[0],
+                        "description": details[1],
+                        "default_duration_seconds": details[2],
+                    }
+                    for event_id, details in self.DIRECTOR_EVENT_CATALOG.items()
+                ],
+                "status": "operator opt-in; named recipes and duration bounds are enforced by Vector",
+            },
             "spatial_focus_note": "For best effect, ensure electrode strength is properly calibrated in ReStim for the active electrode configuration.",
             "signal_authority": {
                 "axis_control": {
@@ -2162,6 +2208,25 @@ class VectorApp:
             "ptt_policy": "LB alone; LB+D-pad remains a Vector control gesture",
         })
         return snapshot
+
+    def _director_event_state(self) -> dict:
+        now = time.monotonic()
+        active = self.event_engine.active_trigger_names(now)
+        recent = []
+        for entry in reversed(self._director_event_history):
+            age = max(0.0, now - float(entry["started_at"]))
+            recent.append({
+                "event": entry["event"],
+                "duration_seconds": entry["duration_seconds"],
+                "age_seconds": round(age, 3),
+                "active": entry["event"] in active and age < float(entry["duration_seconds"]),
+            })
+        return {
+            "enabled": bool(self.director_events_enabled.get()),
+            "active": active,
+            "pending_count": self.event_engine.pending_trigger_count,
+            "recent": recent[:6],
+        }
 
     def _director_state(self) -> dict:
         diag = self.engine.diagnostics()
@@ -2216,6 +2281,7 @@ class VectorApp:
             },
             "future": self.engine.director_forecast(),
             "timeline": self.timeline.snapshot(),
+            "custom_events": self._director_event_state(),
             "semantic": {
                 "texture": self._active_director_profile("texture"),
                 "primary_spatial": {
@@ -2272,6 +2338,33 @@ class VectorApp:
             "capabilities": self._director_capabilities(),
         }
 
+    def _trigger_director_event(self, body: dict) -> tuple[int, dict]:
+        if not self.director_events_enabled.get():
+            return 409, {"ok": False, "error": "Director custom events are disabled in Vector"}
+        event_id = str(body.get("event", "")).strip()
+        if event_id not in self.DIRECTOR_EVENT_CATALOG:
+            return 400, {"ok": False, "error": "event is not in the curated catalogue"}
+        default_duration = self.DIRECTOR_EVENT_CATALOG[event_id][2]
+        try:
+            duration = float(body.get("duration_seconds", default_duration))
+        except (TypeError, ValueError):
+            return 400, {"ok": False, "error": "duration_seconds must be a number"}
+        if not self.DIRECTOR_EVENT_MIN_SECONDS <= duration <= self.DIRECTOR_EVENT_MAX_SECONDS:
+            return 400, {
+                "ok": False,
+                "error": (f"duration_seconds must be between {self.DIRECTOR_EVENT_MIN_SECONDS:g} "
+                          f"and {self.DIRECTOR_EVENT_MAX_SECONDS:g}"),
+            }
+        now = time.monotonic()
+        params = dict(self.DIRECTOR_EVENT_PARAM_OVERRIDES.get(event_id, {}))
+        params["duration_ms"] = int(round(duration * 1000.0))
+        if not self.event_engine.schedule_trigger(event_id, params, now):
+            return 500, {"ok": False, "error": "event recipe could not be expanded"}
+        entry = {"event": event_id, "started_at": now,
+                 "duration_seconds": round(duration, 3)}
+        self._director_event_history.append(entry)
+        return 202, {"ok": True, "accepted": True, **entry}
+
     def _drain_director_requests(self) -> None:
         while True:
             try:
@@ -2323,6 +2416,12 @@ class VectorApp:
                 elif request.method == "POST" and request.path == "/v1/generated-motion/authored":
                     request.status = 200
                     request.response = {"ok": True, "motion_source": self.generated_motion.authored()}
+                elif request.method == "POST" and request.path == "/v1/event/trigger":
+                    request.status, request.response = self._trigger_director_event(request.body)
+                elif request.method == "POST" and request.path == "/v1/event/cancel":
+                    self.event_engine.clear_triggers()
+                    request.status = 200
+                    request.response = {"ok": True, "state": "custom events cancelled"}
                 elif request.method == "POST" and request.path == "/v1/semantic/texture":
                     label = str(request.body.get("texture", "")).strip()
                     if label not in self.TEXTURE_PROFILE_NAMES:
@@ -2480,6 +2579,11 @@ class VectorApp:
             self._stop_director()
         self._save_settings()
 
+    def _director_events_enabled_changed(self) -> None:
+        if not self.director_events_enabled.get():
+            self.event_engine.clear_triggers()
+        self._save_settings()
+
     def _auto_start_director(self) -> None:
         if self.director_enabled.get():
             self._start_director()
@@ -2506,18 +2610,22 @@ class VectorApp:
         ttk.Spinbox(body, from_=1024, to=65535, textvariable=self.director_port, width=8).grid(row=2, column=3, padx=6)
         ttk.Label(body, textvariable=self.director_status,
                   font=("TkDefaultFont", 10, "bold")).grid(row=3, column=0, columnspan=4, sticky="w", pady=(10, 4))
+        ttk.Checkbutton(
+            body, text="Allow curated Director custom events",
+            variable=self.director_events_enabled, command=self._director_events_enabled_changed,
+        ).grid(row=4, column=0, columnspan=4, sticky="w", pady=(4, 2))
         ttk.Label(body, text=("v0.5 commands: state/capabilities, Preset A/B/Baseline, Rolling Variety, Neutral, "
-                              "semantic Texture/Spatial Focus/Variation, plus bounded Top/Bottom Spatial Gain."),
-                  foreground="#555", wraplength=650, justify="left").grid(row=4, column=0, columnspan=4, sticky="w")
+                              "semantic Texture/Spatial Focus/Variation, bounded Spatial Gain, and curated events."),
+                  foreground="#555", wraplength=650, justify="left").grid(row=5, column=0, columnspan=4, sticky="w")
         ttk.Label(body, text=(
             "For best Spatial Focus effect, ensure electrode strength is properly calibrated in ReStim "
             "for the active electrode configuration. Spatial Gain is bounded and smoothly ramped by Vector."),
             foreground="#8a5a00", wraplength=650, justify="left").grid(
-                row=5, column=0, columnspan=4, sticky="w", pady=(6, 12))
-        ttk.Button(body, text="Semantic profiles", command=self.show_director_semantic_window).grid(row=6, column=0, sticky="w")
-        ttk.Button(body, text="Funscript timeline...", command=self.show_timeline_window).grid(row=6, column=1, sticky="w", padx=6)
-        ttk.Button(body, text="Save", command=self._save_settings).grid(row=6, column=2, sticky="w", padx=6)
-        ttk.Button(body, text="Close", command=window.destroy).grid(row=6, column=3, sticky="e")
+                row=6, column=0, columnspan=4, sticky="w", pady=(6, 12))
+        ttk.Button(body, text="Semantic profiles", command=self.show_director_semantic_window).grid(row=7, column=0, sticky="w")
+        ttk.Button(body, text="Funscript timeline...", command=self.show_timeline_window).grid(row=7, column=1, sticky="w", padx=6)
+        ttk.Button(body, text="Save", command=self._save_settings).grid(row=7, column=2, sticky="w", padx=6)
+        ttk.Button(body, text="Close", command=window.destroy).grid(row=7, column=3, sticky="e")
 
     def show_timeline_window(self) -> None:
         if self._timeline_window is not None and self._timeline_window.winfo_exists():
@@ -3295,20 +3403,54 @@ class VectorApp:
                     authored_overrides[name] = value
             if "V0" in authored_overrides:
                 authored_overrides["V0"] = apply_gain(authored_overrides["V0"], top_gain)
-        primary_args = (
-            sample.alpha, sample.beta, tuple(electrodes), primary_volume, sample.frequency,
-            sample.pulse_frequency, sample.pulse_rise_time, sample.pulse_width)
-        primary_overrides = dict(authored_overrides) if authored_overrides else None
-        self.restim_sender.submit(
-            lambda args=primary_args, overrides=primary_overrides:
-                self.restim.send_primary(*args, overrides=overrides))
         focused_alpha_prostate = apply_bottom_focus(
             sample.alpha_prostate, self.director_bottom_focus.get(),
             strength=self.bottom_focus_strength.get())
         bottom_volume = apply_gain(sample.volume_prostate, bottom_gain)
+        primary_alpha = sample.alpha
+        primary_beta = sample.beta
+        primary_frequency = sample.frequency
+        primary_pulse_frequency = sample.pulse_frequency
+        primary_pulse_width = sample.pulse_width
+        if self.director_events_enabled.get():
+            event_base = authored_overrides or {}
+            event_values = self.event_engine.apply_triggers(sample.due_at, {
+                "volume": event_base.get("V0", primary_volume),
+                "volume-prostate": bottom_volume,
+                "frequency": event_base.get("C0", primary_frequency),
+                "pulse_frequency": event_base.get("P0", primary_pulse_frequency),
+                "pulse_width": event_base.get("P1", primary_pulse_width),
+                "alpha": event_base.get("L0", primary_alpha),
+                "beta": event_base.get("L1", primary_beta),
+                "e1": event_base.get("E1", electrodes[0]),
+                "e2": event_base.get("E2", electrodes[1]),
+                "e3": event_base.get("E3", electrodes[2]),
+                "e4": event_base.get("E4", electrodes[3]),
+                "sensor_suppression": event_base.get("S1", 0.0),
+            })
+            primary_volume = event_values["volume"]
+            bottom_volume = event_values["volume-prostate"]
+            primary_frequency = event_values["frequency"]
+            primary_pulse_frequency = event_values["pulse_frequency"]
+            primary_pulse_width = event_values["pulse_width"]
+            primary_alpha = event_values["alpha"]
+            primary_beta = event_values["beta"]
+            electrodes = tuple(event_values[f"e{i}"] for i in range(1, 5))
+            if authored_overrides:
+                authored_overrides = dict(authored_overrides)
+                for event_axis, authored_axis in AXIS_AUTHORED.items():
+                    if authored_axis in authored_overrides:
+                        authored_overrides[authored_axis] = event_values[event_axis]
+        primary_args = (
+            primary_alpha, primary_beta, tuple(electrodes), primary_volume, primary_frequency,
+            primary_pulse_frequency, sample.pulse_rise_time, primary_pulse_width)
+        primary_overrides = dict(authored_overrides) if authored_overrides else None
+        self.restim_sender.submit(
+            lambda args=primary_args, overrides=primary_overrides:
+                self.restim.send_primary(*args, overrides=overrides))
         prostate_args = (
             focused_alpha_prostate, sample.beta_prostate, bottom_volume,
-            sample.frequency, sample.pulse_frequency, sample.pulse_width,
+            primary_frequency, primary_pulse_frequency, primary_pulse_width,
             sample.pulse_rise_time)
         self.prostate_sender.submit(
             lambda args=prostate_args: self.prostate_restim.send_prostate(*args))
@@ -3328,6 +3470,7 @@ class VectorApp:
         self.engine.receive_l0(self._tempo_l0(value, now), interval_ms, now)
 
     def neutral(self) -> None:
+        self.event_engine.clear_triggers()
         self.apply_config()
         self._reset_four_phase_group_delay()
         self._motion_send_last_l0 = 0.5
@@ -3353,6 +3496,7 @@ class VectorApp:
         self.engine.resume()
 
     def stop(self) -> None:
+        self.event_engine.clear_triggers()
         self.generated_motion.authored()
         self._reset_four_phase_group_delay()
         self._motion_send_last_l0 = 0.5

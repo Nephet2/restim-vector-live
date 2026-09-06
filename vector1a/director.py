@@ -109,6 +109,7 @@ class _Handler(BaseHTTPRequestHandler):
                 "/v1/spatial-gain/top", "/v1/spatial-gain/bottom",
                 "/v1/generated-motion/plan", "/v1/generated-motion/hold",
                 "/v1/generated-motion/resume", "/v1/generated-motion/authored",
+                "/v1/event/trigger", "/v1/event/cancel",
                 "/v1/modifier/target", "/v1/modifier/stroke-range", "/v1/modifier/tempo", "/v1/modifier/restore"):
             self._send(404, {"ok": False, "error": "not found"})
             return

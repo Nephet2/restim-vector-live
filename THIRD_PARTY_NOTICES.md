@@ -17,7 +17,14 @@ for compatibility with the following MIT-licensed projects.
 - Copyright (c) 2023 diglet48
 - License: MIT
 
-The MIT license text applicable to both upstream projects is reproduced below:
+## Senorgif33 restim-vector-live fork
+
+- Source: https://github.com/Senorgif33/restim-vector-live
+- Custom-event reference revision: `f3978be94e7cfe0296184f0c9920d0962015d9ec`
+- Event definitions include recipe credits recorded in `vector1a/event_definitions.yml`
+- License: MIT
+
+The MIT license text applicable to these upstream projects is reproduced below:
 
 > Permission is hereby granted, free of charge, to any person obtaining a copy
 > of this software and associated documentation files (the "Software"), to deal
