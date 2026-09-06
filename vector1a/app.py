@@ -3475,7 +3475,9 @@ class VectorApp:
     def _receive_generated_l0(self, value: float, interval_ms: int = 0,
                               received_at: float | None = None) -> None:
         now = time.monotonic() if received_at is None else float(received_at)
-        self.engine.receive_l0(self._tempo_l0(value, now), interval_ms, now)
+        self.engine.receive_l0(
+            self._tempo_l0(value, now), interval_ms, now,
+            stroke_bounds=self.generated_motion.stroke_bounds(now))
 
     def neutral(self) -> None:
         self.event_engine.clear_triggers()

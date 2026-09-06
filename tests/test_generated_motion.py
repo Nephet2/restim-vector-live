@@ -58,6 +58,20 @@ class GeneratedMotionTests(unittest.TestCase):
         finally:
             source.close()
 
+    def test_transition_bounds_expand_smoothly_from_starting_position(self):
+        source = GeneratedMotionSource(lambda *_args: None, cadence_hz=50)
+        try:
+            plan = MotionPlan("breathing", 0.35, 0.85, 2400, 8.0, 120, "test")
+            source.apply(plan, 0.50)
+            started = source._plan_started_at
+            self.assertEqual(source.stroke_bounds(started), (0.5, 0.5))
+            low, high = source.stroke_bounds(started + 4.0)
+            self.assertAlmostEqual(low, 0.425)
+            self.assertAlmostEqual(high, 0.675)
+            self.assertEqual(source.stroke_bounds(started + 8.0), (0.35, 0.85))
+        finally:
+            source.close()
+
 
 if __name__ == "__main__":
     unittest.main()
