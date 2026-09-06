@@ -28,8 +28,9 @@ from .fourphase import (ELECTRODE_ORDERS, SPATIAL_MODELS, adaptive_crossover_wid
                         proportional_reversal_boost, reversal_emphasis_envelope,
                         stroke_phase_crossover, restim_crossfade, vertical_crossfade)
 from .spatial_gain import SpatialGainController, apply_gain
-from .focus import (TOP_FOCUS_LABELS, BOTTOM_FOCUS_LABELS, apply_top_focus, apply_bottom_focus,
-                    top_focus_weights, bottom_focus_window, FocusHistory)
+from .focus import (TOP_FOCUS_LABELS, BOTTOM_FOCUS_LABELS, apply_top_focus,
+                    apply_bottom_focus_window, top_focus_weights, bottom_focus_window,
+                    BottomFocusTransition, FocusHistory)
 from . import __version__
 
 
@@ -500,6 +501,7 @@ class VectorApp:
         # loading is not mistaken for an intentional Director transition.
         self._top_focus_history = FocusHistory(self.director_top_focus.get())
         self._bottom_focus_history = FocusHistory(self.director_bottom_focus.get())
+        self._bottom_focus_transition = BottomFocusTransition(self.director_bottom_focus.get())
         self._top_spatial_gain = SpatialGainController()
         self._bottom_spatial_gain = SpatialGainController()
         self.director_top_focus.trace_add("write", self._on_top_focus_changed)
@@ -1947,6 +1949,9 @@ class VectorApp:
     def _on_bottom_focus_changed(self, *_args) -> None:
         if hasattr(self, "_bottom_focus_history"):
             self._bottom_focus_history.select(self.director_bottom_focus.get())
+        if hasattr(self, "_bottom_focus_transition"):
+            self._bottom_focus_transition.select(
+                self.director_bottom_focus.get(), duration=1.0)
 
     def _focus_history_state(self) -> dict:
         top = self._top_focus_history.snapshot()
@@ -1954,6 +1959,8 @@ class VectorApp:
         bottom["strength"] = round(float(self.bottom_focus_strength.get()), 3)
         bottom["alpha_window"] = [round(x, 3) for x in bottom_focus_window(
             self.director_bottom_focus.get())]
+        if hasattr(self, "_bottom_focus_transition"):
+            bottom["transition"] = self._bottom_focus_transition.snapshot()
         top["strength"] = round(float(self.top_focus_strength.get()), 3)
         top["nominal_ceiling"] = round(float(self.top_focus_nominal_ceiling.get()), 3)
         return {"top": top, "bottom": bottom}
@@ -3403,8 +3410,9 @@ class VectorApp:
                     authored_overrides[name] = value
             if "V0" in authored_overrides:
                 authored_overrides["V0"] = apply_gain(authored_overrides["V0"], top_gain)
-        focused_alpha_prostate = apply_bottom_focus(
-            sample.alpha_prostate, self.director_bottom_focus.get(),
+        focused_alpha_prostate = apply_bottom_focus_window(
+            sample.alpha_prostate,
+            self._bottom_focus_transition.window(now=sample.due_at),
             strength=self.bottom_focus_strength.get())
         bottom_volume = apply_gain(sample.volume_prostate, bottom_gain)
         primary_alpha = sample.alpha
