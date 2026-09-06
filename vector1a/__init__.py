@@ -1,3 +1,3 @@
-"""Vector 1A live MFP to ReStim bridge."""
+"""Vector 1A package."""
 
-__version__ = "1.6.0-alpha49"
+__version__ = "1.6.0-alpha76"

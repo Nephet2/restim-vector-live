@@ -6,7 +6,10 @@ ordinary positional `L0` stream, Vector remains the deterministic motion generat
 MFP supplies a clearly authored ReStim axis set, Vector can automatically pass those axes
 through on the same delayed timeline and generate only the missing axes.
 
-Current development build: **1.6.0-alpha49**.
+Current development build: **1.6.0-alpha76**.
+
+**Upgrading from alpha49?** Read [Changes since alpha49](RELEASE_NOTES_1.6.0-alpha76.md)
+for the accumulated features, compatibility notes and new MFP WebSocket setup.
 
 > [!CAUTION]
 > Commission with ReStim's graphical display and stimulation hardware
@@ -29,7 +32,7 @@ dependency of the core application.
 
 ```mermaid
 flowchart LR
-    MFP["MultiFunPlayer<br/>L0 stream<br/>offset -2.00 s"] -->|"TCP or UDP :12345"| V["Vector 1A<br/>50 Hz calculation<br/>2.00 s deterministic queue"]
+    MFP["MultiFunPlayer<br/>L0 stream<br/>offset -2.00 s"] -->|"TCP / UDP / WebSocket :12345"| V["Vector 1A<br/>50 Hz calculation<br/>2.00 s deterministic queue"]
     V -->|"WebSocket /tcode<br/>L0 L1 E1 E2 E3 E4 V0 C0 P0 P1 P3"| R1["Primary ReStim<br/>3-phase or 4-phase"]
     V -->|"WebSocket :12350/tcode<br/>L0 L1 V0 F0 P0 P1 P3"| R2["Prostate ReStim"]
 ```
@@ -41,6 +44,19 @@ second after they begin.
 
 ## Features
 
+- MFP input accepts TCP, UDP and WebSocket on the configured input port.
+  WebSocket text messages enter the same timestamped T-code parser and motion queue.
+- Optional local Director API for captured Texture/Variation profiles, spatial focus
+  and gain, script awareness, bounded modifiers and deterministic generated-motion plans.
+  The API is disabled by default; no companion application is required.
+- Script modifiers provide Stroke Range (0.30–1.50), Position Bias (±0.35),
+  Curve Smoothing and temporary tempo windows with restoration. Accelerated authored
+  tempo requires a loaded and synchronized funscript timeline.
+- Optional funscript timeline with VLC/MPC media clocks, automatic script discovery,
+  MFP pattern matching and manual preview. Timeline observation by itself does not
+  replace incoming MFP motion.
+- Independent ReStim output workers discard stale pending frames after a dropout
+  instead of delaying the other output or replaying a backlog.
 - Authored-axis routing discovers MFP T-code axes at runtime and supports two policies.
   **Manual selected axes** provides per-axis checkboxes (including `L0`) so an authored
   value can replace the matching Vector-generated primary-ReStim axis or pass through as
@@ -156,7 +172,8 @@ Vector itself has no third-party Python package dependencies.
 1. Download and extract the release ZIP.
 2. Double-click `start-vector1a.bat`.
 3. Leave stimulation hardware disconnected.
-4. In MFP, add a T-code TCP or UDP output to `127.0.0.1:12345`, carrying `L0`.
+4. In MFP, add a **WebSocket** output with URI `ws://127.0.0.1:12345/ws`,
+   carrying `L0`. TCP or UDP to `127.0.0.1:12345` also remain supported.
 5. Set the MFP script offset to **-2.00 seconds**.
 6. In primary ReStim, enable its **WebSocket server** and enter that port in
    Vector (normally `12346`). Do not enter ReStim's TCP port (commonly `12347`):
@@ -174,6 +191,40 @@ Vector itself has no third-party Python package dependencies.
 
 The **Setup guide** button repeats these instructions. Settings are saved at
 `%LOCALAPPDATA%\Vector1A\settings.json`; deleting that file restores defaults.
+
+### MFP WebSocket setup
+
+Start Vector's listener, then connect MFP's WebSocket output to
+`ws://127.0.0.1:12345/ws`. Replace `12345` if you changed Vector's input port.
+The paths `/tcode` and `/` are accepted aliases. Local `ws://` is supported;
+TLS (`wss://`) is not provided by this listener.
+
+The input panel reports **Receiving (WEBSOCKET)** once L0 arrives. The same
+authored-axis routing, look-ahead delay, Neutral, Stop and Resume controls apply
+to every transport. No additional Python package is needed.
+
+Use one MFP output to feed a Vector instance: disconnect the old TCP/UDP output
+when switching to WebSocket, to avoid duplicate or conflicting motion inputs.
+The shared TCP/WebSocket listener accepts one stream connection at a time.
+On disconnect, Vector keeps listening so MFP can reconnect. A quiet script
+does not invalidate an established WebSocket connection.
+
+WebSocket changes the connection method; it does not provide a media clock or
+require a new synchronization offset. Keep your existing commissioned offset.
+For a fresh setup with Vector's default 2.00-second delay, start at MFP **-2.00 s**.
+
+### Upgrading from an older release
+
+Close the old Vector instance, back up
+`%LOCALAPPDATA%\Vector1A\settings.json`, and extract the ZIP into a new folder.
+Run `start-vector1a.bat` there. Existing settings are loaded from the same
+location; new settings use defaults when absent. Both release folders share
+that settings file, so restore your backup if you need an exact rollback.
+Review connection ports, routing and optional startup settings before resuming.
+
+Gwendolyn is optional and is not included in the ZIP. The Director API remains
+off by default on a fresh installation; an upgrade preserves its saved setting.
+Existing TCP/UDP setups do not need to change to use this release.
 
 ### Stroke-reversal emphasis
 
@@ -246,8 +297,12 @@ Run from the repository root:
 
 ```powershell
 python -m vector1a
-python -m unittest discover -s tests -v
+python -m pip install ".[test]"
+python -m pytest -q
 ```
+
+Pytest is a development dependency only. It runs both unittest classes and the
+standalone tests added during Director/timeline development.
 
 Create the source-based Windows release ZIP by running `build-release.bat`, or:
 
@@ -286,3 +341,96 @@ Alpha 45 adds two routing policies in **MFP axes**. **Manual selected axes** all
 ## Alpha 46 delayed-timeline authored routing fix
 
 Alpha 46 fixes automatic authored ReStim routing when Vector is using its normal look-ahead delay.  Alpha 45 tested axis freshness against the newest packet currently held in history; because that newest packet is usually later than the delayed sample's original calculation time, the auto router could incorrectly return no overrides.  Alpha 46 evaluates freshness using the newest authored packet that existed at the delayed sample time.  This makes authored `V0`, `L0`, `L1`, and the rest of the detected ReStim set win at the final Primary ReStim merge while preserving Vector's synchronized delay and generated fallback for genuinely missing axes.
+
+
+## Optional Director API (Alpha 51)
+
+Vector remains completely standalone. Alpha 51 adds an **optional, disabled-by-default, loopback-only Director API** for external companions or automation. It has no AI, voice, GPU, cloud, Ollama, or SillyTavern dependency. Its current capabilities are summarized in the alpha76 release notes.
+
+
+### Director semantic profiles (Alpha 52)
+
+The optional local Director API now supports named perceptual controls without exposing raw signal parameters. Texture and Variation profiles are captured by the operator from known-good Vector settings. Primary spatial offers Top — Moving Focus and Top — Depth Spread; the existing secondary/prostate path is exposed semantically as Bottom Focus. Vector remains fully usable without any AI or voice stack.
+
+
+### Anatomical Spatial Focus (Alpha 55)
+
+Alpha 55 replaces the experimental Area of Effect breadth model with calibrated
+**Top Spatial Focus** and **Bottom Spatial Focus** profiles.
+
+Top mapping: E1 glans, E2 shaft, E3 lower shaft, E4 root. Capturable labels are
+Glans Focus, Shaft Focus, Lower Shaft Focus, Root Focus, Top Sweep and Top Full.
+
+Bottom mapping: A prostate, B anus, C testicles/perineum. Capturable labels are
+Prostate Focus, Anal Focus, Perineum Focus, Bottom Sweep and Bottom Full.
+
+These are operator-calibrated perceptual profiles rather than universal signal
+recipes. Primary Spatial (Moving Focus / Depth Spread) remains a separate
+behaviour dimension, so location/focus and movement/spread can be combined.
+
+## Alpha56 anatomical focus engine
+
+Spatial Focus is now a bounded engine transform. Top focus weights the neutral-centred E1-E4 electrode excursions (E1 glans, E2 shaft, E3 lower shaft, E4 root) with configurable nominal headroom, default 0.65. Bottom focus remaps the secondary Alpha excursion into prostate-, anal-, or perineum-biased windows. These transforms occur after source selection and before final T-code clamping, so Director focus behaves consistently with Vector-generated and authored primary electrode axes.
+
+
+### Alpha57 stronger top-focus commissioning envelope
+
+Alpha57 increases anatomical contrast for top spatial focus. The 100% envelope is now peak 1.30, adjacent 1.05, next 0.80, far 0.60, with a default nominal headroom ceiling of 0.65. Top focus strength is adjustable from 0% to 175%; strength scales the envelope about neutral multiplier 1.0. At the default 0.65 ceiling, a 175% focused full-scale excursion reaches approximately 0.9956 T-code, retaining a small margin below the hard 1.0 limit.
+
+### Spatial Focus and ReStim calibration
+For best Spatial Focus effect, ensure electrode strength is properly calibrated in ReStim for the active electrode configuration. ReStim remains the owner of electrode calibration; Vector does not duplicate it.
+
+Alpha58 also exposes top/bottom Spatial Focus selection history to the Director so a companion can reason about how long a focus has been selected and what preceded it.
+
+
+## Alpha59 — bounded Spatial Gain
+
+Spatial Focus continues to control *where* the effect is concentrated. Alpha59 adds independent Top and Bottom Spatial Gain controls for *how much* intensity is applied while preserving the current focus.
+
+Defaults: 10 percentage-point step, 50–150% bounds, 20 percentage-points/second ramp, 100% baseline. Spatial Gain is applied to the final primary/secondary V0 path after authored-vs-generated source routing and before final clamp. Authored primary V0 is therefore covered as well.
+
+For best Spatial Focus effect, ensure electrode strength is properly calibrated in ReStim for the active electrode configuration.
+
+
+## Alpha 60 — Vector-backed LB push-to-talk state
+
+The optional Director API exposes `GET /v1/controller` from Vector's proven Windows XInput path. LB alone is a PTT candidate; LB+D-pad remains reserved for Vector's existing modified D-pad controls. This avoids depending on browser Gamepad visibility.
+
+
+### Alpha63 stop latch
+
+The Director API now distinguishes input reception from output authority. A Director stop latches output off while MFP input may continue to be observed. Only an explicit resume re-enables output.
+
+## Alpha64 — read-only funscript timeline
+
+Open **Director API → Funscript timeline...** to load a `.funscript`. `MFP pattern sync` estimates script position from incoming L0 while MFP/media playback remains unchanged. `Manual preview` provides an internal seek/play/pause clock for testing. The timeline is observation only in this release and never replaces or modifies incoming T-code.
+
+
+## Alpha 65: direct media-player clock and automatic funscript discovery
+
+The read-only funscript timeline can now use **Auto media player**, **VLC direct**, or **MPC direct** as an authoritative playback clock. Auto mode tries VLC first and MPC second. Vector polls the player locally for media identity, playback state, duration and current position; ordinary seeks therefore move the timeline immediately without waiting for MFP pattern reacquisition.
+
+When **Auto-load matching funscript** is enabled, Vector looks first beside the currently playing local media for `<media basename>.funscript`, then in any semicolon-separated script-library folders configured in **Director API → Funscript timeline...**. If a matching script is found it is loaded automatically. Manual loading, MFP pattern sync and Manual preview remain available fallbacks.
+
+Direct player integration remains observation-only: it cannot start, stop, seek or otherwise control the media player, and the loaded funscript does not drive or modify Vector output.
+
+Default local endpoints are VLC HTTP on `127.0.0.1:8080` (password configurable) and MPC web interface on `127.0.0.1:13579`. The corresponding player web/HTTP interface must be enabled by the operator.
+
+
+## Alpha67 MPC clock correction
+
+MPC direct clock parsing now converts the numeric `position` and `duration` values from milliseconds to seconds. The timeline window also shows clock health and the raw MPC position for commissioning. A playing clock that fails to advance is marked stale rather than authoritative; Auto mode may fall back to MFP pattern matching when a lock is available.
+
+
+## Alpha70 deterministic modifier commissioning
+
+Alpha70 simplifies the manual modifier layer after first-use feedback. Alpha68's Stroke Amplitude Scale and Global Range Scale were perceptually redundant, so they are replaced by one **Stroke Range** control. Output remains explicitly bounded to ReStim's normalized 0..1 input range.
+
+The retained manual modifiers are **Stroke Range**, **Position Bias**, and **Curve Smoothing**. The commissioning transition default is now **0.20 seconds**.
+
+Alpha70 also adds a temporary **Tempo Window** with 0.5x, 1x and 2x choices plus a duration. Tempo uses the loaded full funscript timeline rather than merely shortening the most recent MFP segment; this lets 2x read genuine future authored positions. At the end of a timed window Vector rejoins the current authored position through the configured transition ramp. This is deliberately still a manual commissioning feature and is not exposed to Gwendolyn yet.
+
+
+## Alpha71: relative Stroke Range Director control
+
+The Director API can now request `narrower`, `wider`, or `restore` through `/v1/modifier/stroke-range`. Vector owns the deterministic 0.10 step, 0.30–1.50 bounds, 0–1 output clamp, and the configured transition. Position Bias is preserved while Stroke Range changes, so a targeted focus can be tightened or loosened incrementally without losing its location.

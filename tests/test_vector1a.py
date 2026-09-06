@@ -375,3 +375,74 @@ class QueueTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_director_forecast_summarizes_queued_future():
+    from vector1a.engine import VectorEngine
+    sent = []
+    now = [100.0]
+    engine = VectorEngine(sent.append, rate_hz=10, lookahead_seconds=2.0, clock=lambda: now[0])
+    # Use deterministic step() without starting the background scheduler.
+    engine.resume()
+    engine.receive_l0(0.2, received_at=99.9)
+    engine.receive_l0(0.8, received_at=100.0)
+    for i in range(6):
+        engine.step(100.0 + i * 0.1, release_at=100.0)
+    forecast = engine.director_forecast(100.0)
+    assert forecast["queue_samples"] >= 1
+    assert forecast["horizon_seconds"] > 0
+    assert forecast["direction"] in ("rising", "falling", "steady")
+    assert forecast["speed_trend"] in ("increasing", "decreasing", "steady")
+
+
+def test_director_signal_snapshot_reports_activity_and_lull():
+    from vector1a.engine import VectorEngine
+    now = [100.0]
+    engine = VectorEngine(lambda sample: None, clock=lambda: now[0])
+    engine.receive_l0(0.2, received_at=99.8)
+    engine.receive_l0(0.8, received_at=100.0)
+    snap = engine.director_signal_snapshot(100.0)
+    assert snap["activity"] in ("active", "hold")
+    assert snap["direction"] == "rising"
+    assert snap["local_amplitude"] > 0.5
+    assert snap["energy_band"] in ("relaxing", "moderate", "challenging", "testing")
+    now[0] = 101.0
+    lull = engine.director_signal_snapshot(101.0)
+    assert lull["activity"] == "lull"
+    assert lull["energy_score"] == 0.0
+
+
+def test_stop_state_is_immediate_and_latched_against_input():
+    from vector1a.engine import VectorEngine
+    now = [100.0]
+    sent = []
+    engine = VectorEngine(sent.append, rate_hz=10, lookahead_seconds=0.2, clock=lambda: now[0])
+    engine.resume()
+    assert engine.diagnostics().state == "Buffering"
+    assert engine.control_state()["output_enabled"] is True
+
+    engine.stop()
+    assert engine.diagnostics().state == "Stopped"
+    assert engine.control_state()["engine_state"] == "Stopped"
+    assert engine.control_state()["output_enabled"] is False
+
+    # Input remains visible to the observer but must not reopen the output gate.
+    engine.receive_l0(0.2, received_at=99.9)
+    engine.receive_l0(0.8, received_at=100.0)
+    engine.step(100.0, release_at=100.5)
+    assert engine.director_signal_snapshot(100.0)["direction"] == "rising"
+    assert engine.control_state()["engine_state"] == "Stopped"
+    assert engine.control_state()["output_enabled"] is False
+    assert sent == []
+
+
+def test_resume_reopens_output_gate_in_buffering_state():
+    from vector1a.engine import VectorEngine
+    engine = VectorEngine(lambda sample: None, clock=lambda: 100.0)
+    engine.stop()
+    engine.receive_l0(0.7, received_at=100.0)
+    engine.resume()
+    state = engine.control_state()
+    assert state["engine_state"] == "Buffering"
+    assert state["output_enabled"] is True
+    assert engine.diagnostics().state == "Buffering"
