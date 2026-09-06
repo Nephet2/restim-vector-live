@@ -10,19 +10,25 @@ from tkinter import filedialog, messagebox, ttk
 
 from .engine import OutputSample, VectorEngine
 from .motion import MotionMode, MotionParameters
-from .network import MFPListener, ReStimWebSocketClient
+from .network import LatestFrameDispatcher, MFPListener, ReStimWebSocketClient
 from .routing import AuthoredAxisRouter
 from .orchestration import SessionOrchestrator, port_is_open, wait_for_port
 from .settings import load_settings, save_settings, settings_path
 from .controller import (A, B, X, Y, START, LEFT_SHOULDER, RIGHT_SHOULDER, DPAD_UP, DPAD_DOWN,
-                         DPAD_LEFT, DPAD_RIGHT, XInputController)
+                         DPAD_LEFT, DPAD_RIGHT, XInputController, controller_snapshot)
 from .variety import fit_range_for_travel, rolling_offset, rolling_value
+from .director import DirectorBridge, DirectorServer
+from .generated_motion import GeneratedMotionSource, MotionPlan, PATTERNS
+from .timeline import FunscriptTimeline
 from .fourphase import (ELECTRODE_ORDERS, SPATIAL_MODELS, adaptive_crossover_width,
                         apply_group_delay, depth_spread, directed_signed,
                         directional_crossover_profile, map_electrode_order,
                         morph_electrode_order, moving_sequence_window, potential_roles, sequence_cycle_stage,
                         proportional_reversal_boost, reversal_emphasis_envelope,
                         stroke_phase_crossover, restim_crossfade, vertical_crossfade)
+from .spatial_gain import SpatialGainController, apply_gain
+from .focus import (TOP_FOCUS_LABELS, BOTTOM_FOCUS_LABELS, apply_top_focus, apply_bottom_focus,
+                    top_focus_weights, bottom_focus_window, FocusHistory)
 from . import __version__
 
 
@@ -92,10 +98,75 @@ class VectorApp:
         "four_phase_spatial_model", "four_phase_tip_retention",
         "four_phase_spread_softness", "four_phase_full_depth_capture",
     )
+    TEXTURE_PROFILE_NAMES = ("Smoothest", "Smooth", "Normal", "Rough", "Roughest")
+    VARIATION_PROFILE_NAMES = ("Still", "Subtle", "Normal", "Lively", "Wild")
+    TOP_FOCUS_PROFILE_NAMES = TOP_FOCUS_LABELS
+    BOTTOM_FOCUS_PROFILE_NAMES = BOTTOM_FOCUS_LABELS
+    PRIMARY_SPATIAL_NAMES = {
+        "top_moving_focus": "Top — Moving Focus",
+        "top_depth_spread": "Top — Depth Spread",
+    }
+    SECONDARY_SPATIAL_NAMES = {
+        "bottom_focus": "Bottom Focus",
+    }
+    TEXTURE_PROFILE_FIELDS = (
+        "frequency_ramp_level",
+        "pulse_frequency_min", "pulse_frequency_max",
+        "pulse_rise_min", "pulse_rise_max",
+        "pulse_width_min", "pulse_width_max",
+        "four_phase_crossover_width", "four_phase_crossover_curve",
+        "four_phase_crossover_sharpness", "four_phase_adaptive_crossover",
+        "four_phase_slow_crossover_width", "four_phase_fast_crossover_width",
+        "four_phase_directional_trajectory", "four_phase_reverse_width_scale",
+        "four_phase_reverse_curve", "four_phase_reverse_sharpness",
+        "four_phase_reversal_emphasis", "four_phase_reversal_window",
+        "four_phase_reversal_strength", "four_phase_stroke_phase_texture",
+        "four_phase_acceleration_width_scale", "four_phase_deceleration_width_scale",
+        "four_phase_group_delay", "four_phase_group_delay_ms",
+        "four_phase_group_delay_transition",
+    )
+    VARIATION_PROFILE_FIELDS = (
+        "variety_enabled", "variety_frequency", "variety_pulse_frequency",
+        "variety_pulse_rise", "variety_pulse_width", "variety_phase",
+        "variety_electrode_morph",
+        "variety_frequency_cycle", "variety_pulse_frequency_cycle",
+        "variety_pulse_rise_cycle", "variety_pulse_width_cycle",
+        "variety_phase_cycle", "variety_electrode_morph_cycle",
+        "variety_electrode_morph_transition_seconds",
+        "jitter_enabled", "jitter_amplitude", "jitter_cycle_seconds",
+        "speed_linked_variation", "variation_full_speed_percent",
+        "variation_fade_seconds", "four_phase_moving_sequence",
+        "four_phase_moving_sequence_depth", "four_phase_moving_sequence_width",
+    )
+    TOP_FOCUS_PROFILE_FIELDS = (
+        "electrode_order",
+        "four_phase_crossover_width", "four_phase_slow_crossover_width",
+        "four_phase_fast_crossover_width", "four_phase_spatial_curve",
+        "four_phase_spatial_blend", "four_phase_directional_trajectory",
+        "four_phase_moving_sequence", "four_phase_moving_sequence_depth",
+        "four_phase_moving_sequence_width", "four_phase_spatial_model",
+        "four_phase_tip_retention", "four_phase_spread_softness",
+        "four_phase_full_depth_capture", "motion_rising_volume_multiplier",
+        "motion_falling_volume_multiplier",
+    )
+    BOTTOM_FOCUS_PROFILE_FIELDS = (
+        "prostate_narrow_ratio", "prostate_arc_depth", "prostate_threshold",
+        "prostate_volume_multiplier", "prostate_rest_level", "prostate_phase_degrees",
+    )
+
     SETTINGS_FIELDS = (
         "mfp_host", "mfp_port", "restim_host", "restim_port", "prostate_host", "prostate_port",
+        "timeline_media_host", "timeline_vlc_port", "timeline_vlc_password", "timeline_mpc_port",
+        "timeline_script_libraries", "timeline_auto_load_script", "timeline_clock_source",
         "four_phase_host", "four_phase_port",
         "auto_start_mfp", "auto_start_restim", "auto_start_prostate",
+        "director_enabled", "director_host", "director_port",
+        "top_focus_nominal_ceiling", "top_focus_strength", "bottom_focus_strength",
+        "top_spatial_gain_step_percent", "bottom_spatial_gain_step_percent",
+        "top_spatial_gain_min_percent", "top_spatial_gain_max_percent",
+        "bottom_spatial_gain_min_percent", "bottom_spatial_gain_max_percent",
+        "spatial_gain_ramp_percent_per_second",
+        "director_top_focus", "director_bottom_focus",
         "mfp_launch_target", "restim_launch_target", "prostate_launch_target",
         "rate", "lookahead", "volume", "dynamic_volume", "volume_rest_level", "volume_ratio",
         "volume_ramp_up", "frequency_ramp_level", "frequency_ratio", "send_frequency",
@@ -134,6 +205,9 @@ class VectorApp:
         "variety_pulse_rise_cycle", "variety_pulse_width_cycle", "variety_phase_cycle",
         "variety_frequency", "variety_pulse_frequency",
         "variety_pulse_rise", "variety_pulse_width", "variety_phase",
+        "modifier_enabled", "modifier_stroke_range",
+        "modifier_position_bias", "modifier_smoothing", "modifier_transition_seconds",
+        "modifier_tempo_scale", "modifier_tempo_duration_seconds",
     )
 
     def __init__(self, root: tk.Tk) -> None:
@@ -161,6 +235,11 @@ class VectorApp:
         self.restim_launch_target = tk.StringVar(value="")
         self.prostate_launch_target = tk.StringVar(value="")
         self.startup_status = tk.StringVar(value="Manual startup")
+        self.director_enabled = tk.BooleanVar(value=False)
+        self.director_host = tk.StringVar(value="127.0.0.1")
+        self.director_port = tk.IntVar(value=11436)
+        self.director_status = tk.StringVar(value="DIRECTOR: OFF")
+        self._director_window = None
         self.session_ready_status = tk.StringVar(value="SESSION: MANUAL")
         self._startup_in_progress = False
         self.authored_axes_status = tk.StringVar(value="No authored axes detected")
@@ -245,6 +324,34 @@ class VectorApp:
         self._preset_active: str | None = None
         self._preset_transition = None
         self._preset_window = None
+        self.director_texture = tk.StringVar(value="Unassigned")
+        self.director_primary_spatial = tk.StringVar(value="top_moving_focus")
+        self.director_secondary_spatial = tk.StringVar(value="bottom_focus")
+        self.director_variation = tk.StringVar(value="Unassigned")
+        self.director_top_focus = tk.StringVar(value="Top Full")
+        self.director_bottom_focus = tk.StringVar(value="Bottom Full")
+        self.top_focus_nominal_ceiling = tk.DoubleVar(value=0.65)
+        self.top_focus_strength = tk.DoubleVar(value=1.0)
+        self.bottom_focus_strength = tk.DoubleVar(value=1.0)
+        self.top_spatial_gain_step_percent = tk.DoubleVar(value=10.0)
+        self.bottom_spatial_gain_step_percent = tk.DoubleVar(value=10.0)
+        self.top_spatial_gain_min_percent = tk.DoubleVar(value=50.0)
+        self.top_spatial_gain_max_percent = tk.DoubleVar(value=150.0)
+        self.bottom_spatial_gain_min_percent = tk.DoubleVar(value=50.0)
+        self.bottom_spatial_gain_max_percent = tk.DoubleVar(value=150.0)
+        self.spatial_gain_ramp_percent_per_second = tk.DoubleVar(value=20.0)
+        self.top_spatial_gain_display = tk.StringVar(value="100%")
+        self.bottom_spatial_gain_display = tk.StringVar(value="100%")
+        self._director_texture_profiles: dict[str, dict] = {}
+        self._director_variation_profiles: dict[str, dict] = {}
+        self._director_top_focus_profiles: dict[str, dict] = {}
+        self._director_bottom_focus_profiles: dict[str, dict] = {}
+        self._director_texture_status_vars: dict[str, tk.StringVar] = {}
+        self._director_variation_status_vars: dict[str, tk.StringVar] = {}
+        self._director_top_focus_status_vars: dict[str, tk.StringVar] = {}
+        self._director_bottom_focus_status_vars: dict[str, tk.StringVar] = {}
+        self.director_semantic_status = tk.StringVar(value="")
+        self._director_semantic_window = None
         self.electrode_order = tk.StringVar(value="ABCD")
         self.variety_electrode_morph = tk.BooleanVar(value=False)
         self.variety_electrode_morph_cycle = tk.DoubleVar(value=6.0)
@@ -256,6 +363,24 @@ class VectorApp:
         self.variation_full_speed_percent = tk.DoubleVar(value=35.0)
         self.variation_fade_seconds = tk.DoubleVar(value=.75)
         self.variation_depth_live = tk.StringVar(value="Effect depth 0%")
+        self.modifier_enabled = tk.BooleanVar(value=False)
+        self.modifier_stroke_range = tk.DoubleVar(value=1.0)
+        self.modifier_position_bias = tk.DoubleVar(value=0.0)
+        self.modifier_smoothing = tk.DoubleVar(value=0.0)
+        self.modifier_transition_seconds = tk.DoubleVar(value=0.2)
+        self.modifier_tempo_scale = tk.DoubleVar(value=2.0)
+        self.modifier_tempo_duration_seconds = tk.DoubleVar(value=30.0)
+        self.modifier_status = tk.StringVar(value="Authored L0 unchanged")
+        self.modifier_tempo_status = tk.StringVar(value="Tempo authored ×1.0")
+        self._modifier_window = None
+        self._tempo_lock = threading.RLock()
+        self._tempo_scale_active = 1.0
+        self._tempo_anchor_media = None
+        self._tempo_anchor_clock = 0.0
+        self._tempo_expires_at = 0.0
+        self._tempo_transition_seconds_active = 0.2
+        self._tempo_restore_started_at = 0.0
+        self._tempo_restore_from = None
         self.send_four_phase_visual = tk.BooleanVar(value=False)
         self.controller_enabled = tk.BooleanVar(value=True)
         self.controller_target = tk.IntVar(value=0)
@@ -297,12 +422,33 @@ class VectorApp:
 
         self._connection_events: deque[str] = deque(maxlen=200)
         self._last_connection_event: dict[str, str] = {}
+        self._last_health_log_at = 0.0
+        self._source_was_stale = False
+        self._last_health_output_count = 0
 
         self.axis_router = AuthoredAxisRouter()
+        self.director_bridge = DirectorBridge()
+        self.director_server = DirectorServer(self.director_bridge)
         self.orchestrator = SessionOrchestrator(self._set_startup_status)
         self.restim = ReStimWebSocketClient(self._set_restim_status)
         self.prostate_restim = ReStimWebSocketClient(self._set_prostate_status)
+        self.restim_sender = LatestFrameDispatcher("Primary", self._set_restim_status)
+        self.prostate_sender = LatestFrameDispatcher("Prostate", self._set_prostate_status)
         self.engine = VectorEngine(self._send_sample)
+        self._latest_authored_l0 = 0.5
+        self.generated_motion = GeneratedMotionSource(self._receive_generated_l0)
+        self.timeline = FunscriptTimeline()
+        self._timeline_window = None
+        self.timeline_file_display = tk.StringVar(value="No funscript loaded")
+        self.timeline_status_display = tk.StringVar(value="Timeline idle")
+        self.timeline_clock_source = tk.StringVar(value=FunscriptTimeline.CLOCK_AUTO)
+        self.timeline_manual_position = tk.DoubleVar(value=0.0)
+        self.timeline_media_host = tk.StringVar(value="127.0.0.1")
+        self.timeline_vlc_port = tk.IntVar(value=8080)
+        self.timeline_vlc_password = tk.StringVar(value="")
+        self.timeline_mpc_port = tk.IntVar(value=13579)
+        self.timeline_script_libraries = tk.StringVar(value="")
+        self.timeline_auto_load_script = tk.BooleanVar(value=True)
         self._four_phase_last_l0 = 0.5
         self._four_phase_direction = 1
         self._four_phase_send_last_l0 = 0.5
@@ -315,17 +461,33 @@ class VectorApp:
         self._four_phase_live_lock = threading.Lock()
         self._four_phase_live_output = (
             (0.5, 0.5, 0.5, 0.5), "ABCD", "ABCD", 0.0, "stable")
-        self.listener = MFPListener(self.engine.receive_l0, self._set_mfp_status, self._on_mfp_command)
-        self.xinput = XInputController(self._xinput_buttons_threaded, self._xinput_status_threaded)
+        self.listener = MFPListener(self._receive_l0, self._set_mfp_status, self._on_mfp_command)
+        self._controller_snapshot = controller_snapshot(0, False)
+        self._controller_state_sequence = 0
+        self.xinput = XInputController(self._xinput_buttons_threaded, self._xinput_status_threaded,
+                                       self._xinput_state_threaded)
         self.sections = {}
         self._first_run = self._load_settings()
+        self._apply_timeline_media_settings()
+        # Focus dwell/history begins after saved settings are restored, so startup
+        # loading is not mistaken for an intentional Director transition.
+        self._top_focus_history = FocusHistory(self.director_top_focus.get())
+        self._bottom_focus_history = FocusHistory(self.director_bottom_focus.get())
+        self._top_spatial_gain = SpatialGainController()
+        self._bottom_spatial_gain = SpatialGainController()
+        self.director_top_focus.trace_add("write", self._on_top_focus_changed)
+        self.director_bottom_focus.trace_add("write", self._on_bottom_focus_changed)
         self._build()
         self._bind_controller_keys()
         self._controller_enabled_changed()
         self.xinput.start()
         self.engine.start()
+        self.timeline.request_media_poll()
+        if self._timeline_window is not None and self._timeline_window.winfo_exists():
+            self._refresh_timeline_window()
         self.root.after(100, self._refresh)
         self.root.after(350, self._auto_start_session)
+        self.root.after(450, self._auto_start_director)
         if self._first_run:
             self.root.after(500, self.show_setup_guide)
         self.root.protocol("WM_DELETE_WINDOW", self.close)
@@ -358,7 +520,10 @@ class VectorApp:
         ttk.Button(toolbar, text="Connection log", command=self.show_connection_log).pack(side="left", padx=6)
         ttk.Button(toolbar, text="MFP axes", command=self.show_axis_routing).pack(side="left", padx=6)
         ttk.Button(toolbar, text="Session startup", command=self.show_session_startup).pack(side="left", padx=6)
+        ttk.Button(toolbar, text="Director", command=self.show_director_window).pack(side="left", padx=6)
+        ttk.Button(toolbar, text="Script modifiers", command=self.show_modifier_window).pack(side="left", padx=6)
         ttk.Label(toolbar, textvariable=self.diag_vars["state"]).pack(side="right", padx=8)
+        ttk.Label(toolbar, textvariable=self.director_status, font=("TkDefaultFont", 9, "bold")).pack(side="right", padx=12)
         ttk.Label(toolbar, textvariable=self.session_ready_status, font=("TkDefaultFont", 9, "bold")).pack(side="right", padx=12)
 
         mfp = self._frame("MultiFunPlayer input", 0, 0)
@@ -371,6 +536,8 @@ class VectorApp:
         ttk.Label(mfp, textvariable=self.mfp_status).grid(row=1, column=2, columnspan=2, sticky="w")
         ttk.Label(mfp, textvariable=self.authored_axes_status, foreground="#555").grid(
             row=2, column=0, columnspan=4, sticky="w", pady=(0, 4))
+        ttk.Label(mfp, text="TCP / UDP / WebSocket on the same port; WebSocket path: /ws",
+                  foreground="#555").grid(row=3, column=0, columnspan=4, sticky="w")
 
         restim = self._frame("ReStim output", 0, 1)
         ttk.Label(restim, text="Primary WS").grid(row=0, column=0, sticky="w")
@@ -1311,6 +1478,9 @@ class VectorApp:
     def _xinput_buttons_threaded(self, buttons: int) -> None:
         self._controller_events.put(("buttons", buttons))
 
+    def _xinput_state_threaded(self, buttons: int, connected: bool) -> None:
+        self._controller_events.put(("state", (int(buttons), bool(connected))))
+
     def _drain_controller_events(self) -> None:
         while True:
             try:
@@ -1319,6 +1489,10 @@ class VectorApp:
                 return
             if kind == "status":
                 self._set_xinput_status(str(value))
+            elif kind == "state":
+                buttons, connected = value
+                self._controller_snapshot = controller_snapshot(int(buttons), bool(connected))
+                self._controller_state_sequence += 1
             else:
                 self._handle_xinput_buttons(int(value))
 
@@ -1527,6 +1701,169 @@ class VectorApp:
         return (morph_electrode_order(logical, source, target, amount),
                 source, target, amount, kind)
 
+    def _update_modifier_status(self) -> None:
+        if not self.modifier_enabled.get():
+            self.modifier_status.set("Authored L0 unchanged")
+            return
+        self.modifier_status.set(
+            f"ON  range ×{self.modifier_stroke_range.get():.2f} | "
+            f"bias {self.modifier_position_bias.get():+.2f} | "
+            f"smooth {self.modifier_smoothing.get():.2f}")
+
+    def reset_modifiers(self) -> None:
+        self.modifier_enabled.set(False)
+        self.modifier_stroke_range.set(1.0)
+        self.modifier_position_bias.set(0.0)
+        self.modifier_smoothing.set(0.0)
+        self.apply_config()
+        self._save_settings()
+
+    def show_modifier_window(self) -> None:
+        if self._modifier_window is not None and self._modifier_window.winfo_exists():
+            self._modifier_window.lift()
+            return
+        window = tk.Toplevel(self.root)
+        self._modifier_window = window
+        window.title("Deterministic funscript modifiers — Alpha70")
+        window.geometry("820x500")
+        window.transient(self.root)
+        body = ttk.Frame(window, padding=14)
+        body.pack(fill="both", expand=True)
+        ttk.Label(body, text=(
+            "Manual commissioning only. Vector transforms the authored L0 deterministically; "
+            "the source script is never rewritten. Disable or Reset to return to authored motion."),
+            wraplength=710).grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 12))
+        ttk.Checkbutton(body, text="Enable modifier layer", variable=self.modifier_enabled).grid(
+            row=1, column=0, columnspan=2, sticky="w", pady=6)
+        rows = (
+            ("Stroke range", self.modifier_stroke_range, 0.30, 1.50, 0.05,
+             "One range control: compresses or expands authored L0 around 0.5; output clamps to 0..1."),
+            ("Position bias", self.modifier_position_bias, -0.35, 0.35, 0.01,
+             "Moves the path upward (+) or downward (-), bounded to 0..1."),
+            ("Curve smoothing", self.modifier_smoothing, 0.00, 1.00, 0.05,
+             "Blends authored positions toward a deterministic smoothstep curve."),
+            ("Transition seconds", self.modifier_transition_seconds, 0.00, 5.00, 0.05,
+             "Ramps modifier changes; commissioning default is 0.20 s."),
+        )
+        for r, (label, var, lo, hi, step, note) in enumerate(rows, 2):
+            ttk.Label(body, text=label).grid(row=r, column=0, sticky="w", pady=7)
+            ttk.Spinbox(body, from_=lo, to=hi, increment=step, textvariable=var, width=9).grid(
+                row=r, column=1, sticky="w", padx=(8, 14))
+            ttk.Label(body, text=note, foreground="#555", wraplength=430).grid(
+                row=r, column=2, columnspan=2, sticky="w")
+        ttk.Label(body, textvariable=self.modifier_status,
+                  font=("TkDefaultFont", 10, "bold")).grid(
+                      row=6, column=0, columnspan=4, sticky="w", pady=(14, 8))
+
+        tempo = ttk.LabelFrame(body, text="Temporary authored-tempo window", padding=8)
+        tempo.grid(row=7, column=0, columnspan=4, sticky="ew", pady=(8, 6))
+        ttk.Label(tempo, text="Scale").grid(row=0, column=0, sticky="w")
+        ttk.Combobox(tempo, textvariable=self.modifier_tempo_scale, state="readonly", width=8,
+                     values=(0.5, 1.0, 2.0)).grid(row=0, column=1, sticky="w", padx=(6, 16))
+        ttk.Label(tempo, text="Duration seconds").grid(row=0, column=2, sticky="w")
+        ttk.Combobox(tempo, textvariable=self.modifier_tempo_duration_seconds, state="readonly", width=8,
+                     values=(10, 15, 30, 60, 90, 120)).grid(row=0, column=3, sticky="w", padx=(6, 16))
+        ttk.Button(tempo, text="Start tempo window", command=self.start_tempo_window).grid(row=0, column=4, padx=6)
+        ttk.Button(tempo, text="Restore ×1", command=self.restore_tempo).grid(row=0, column=5, padx=6)
+        ttk.Label(tempo, textvariable=self.modifier_tempo_status, foreground="#555").grid(
+            row=1, column=0, columnspan=6, sticky="w", pady=(8, 0))
+        ttk.Label(tempo, text=(
+            "Tempo uses the loaded full funscript timeline, so 2× can read future authored positions. "
+            "At the end of the window Vector rejoins the live authored position through the transition ramp."),
+            wraplength=740, foreground="#555").grid(row=2, column=0, columnspan=6, sticky="w", pady=(5, 0))
+
+        buttons = ttk.Frame(body)
+        buttons.grid(row=8, column=0, columnspan=4, sticky="ew", pady=(8, 0))
+        ttk.Button(buttons, text="Apply", command=self.apply_config).pack(side="left")
+        ttk.Button(buttons, text="Reset to authored", command=self.reset_modifiers).pack(side="left", padx=8)
+        ttk.Button(buttons, text="Save", command=self._save_settings).pack(side="left")
+        ttk.Button(buttons, text="Close", command=window.destroy).pack(side="right")
+
+    def start_tempo_window(self) -> None:
+        try:
+            scale = float(self.modifier_tempo_scale.get())
+            if scale not in (0.5, 1.0, 2.0):
+                raise ValueError("Tempo scale must be 0.5, 1.0 or 2.0")
+            duration = min(600.0, max(1.0, float(self.modifier_tempo_duration_seconds.get())))
+            if abs(scale - 1.0) < 1e-9:
+                self.restore_tempo()
+                return
+            media_pos = self.timeline.position_seconds()
+            if media_pos is None or not self.timeline.loaded:
+                raise ValueError("Load and synchronize a funscript timeline before starting a tempo window")
+            now = time.monotonic()
+            with self._tempo_lock:
+                self._tempo_scale_active = scale
+                self._tempo_anchor_media = float(media_pos)
+                self._tempo_anchor_clock = now
+                self._tempo_expires_at = now + duration
+                self._tempo_transition_seconds_active = min(5.0, max(0.0, float(self.modifier_transition_seconds.get())))
+                self._tempo_restore_started_at = 0.0
+                self._tempo_restore_from = None
+            self.modifier_tempo_status.set(f"Tempo ×{scale:.1f} active for {duration:.0f} s")
+        except (tk.TclError, ValueError) as exc:
+            messagebox.showerror("Tempo modifier", str(exc))
+
+    def restore_tempo(self) -> None:
+        now = time.monotonic()
+        raw_pos = self.timeline.position_seconds()
+        with self._tempo_lock:
+            if self._tempo_scale_active != 1.0 and self._tempo_anchor_media is not None and raw_pos is not None:
+                virtual = self._tempo_anchor_media + (float(raw_pos) - self._tempo_anchor_media) * self._tempo_scale_active
+                self._tempo_restore_from = self.timeline.sample_position(virtual)
+            self._tempo_scale_active = 1.0
+            self._tempo_anchor_media = None
+            self._tempo_expires_at = 0.0
+            self._tempo_restore_started_at = now
+        self.modifier_tempo_status.set("Tempo authored ×1.0")
+
+    def _tempo_l0(self, raw_value: float, now: float) -> float:
+        raw = min(1.0, max(0.0, float(raw_value)))
+        with self._tempo_lock:
+            scale = self._tempo_scale_active
+            anchor_media = self._tempo_anchor_media
+            anchor_clock = self._tempo_anchor_clock
+            expires = self._tempo_expires_at
+            transition = self._tempo_transition_seconds_active
+            restore_started = self._tempo_restore_started_at
+            restore_from = self._tempo_restore_from
+
+        if scale != 1.0 and anchor_media is not None:
+            media_pos = self.timeline.position_seconds()
+            if media_pos is not None:
+                virtual_seconds = anchor_media + (float(media_pos) - anchor_media) * scale
+                warped = self.timeline.sample_position(virtual_seconds)
+                if warped is not None:
+                    if expires and now >= expires:
+                        with self._tempo_lock:
+                            self._tempo_scale_active = 1.0
+                            self._tempo_anchor_media = None
+                            self._tempo_expires_at = 0.0
+                            self._tempo_restore_started_at = now
+                            self._tempo_restore_from = float(warped)
+                        restore_started = now
+                        restore_from = float(warped)
+                    else:
+                        if transition <= 1e-9:
+                            return float(warped)
+                        blend = min(1.0, max(0.0, (now - anchor_clock) / transition))
+                        return raw + (float(warped) - raw) * blend
+
+        if restore_from is not None and restore_started > 0.0:
+            if transition <= 1e-9:
+                with self._tempo_lock:
+                    self._tempo_restore_from = None
+                    self._tempo_restore_started_at = 0.0
+                return raw
+            blend = min(1.0, max(0.0, (now - restore_started) / transition))
+            if blend >= 1.0:
+                with self._tempo_lock:
+                    self._tempo_restore_from = None
+                    self._tempo_restore_started_at = 0.0
+                return raw
+            return float(restore_from) + (raw - float(restore_from)) * blend
+        return raw
+
     def apply_config(self) -> None:
         try:
             selected = MotionMode(self.mode.get())
@@ -1566,11 +1903,766 @@ class VectorApp:
                                   variation_fade_seconds=self.variation_fade_seconds.get(),
                                   spatial_curve=self.four_phase_spatial_curve.get(),
                                   spatial_blend=self.four_phase_spatial_blend.get())
+            self.engine.configure_modifier(
+                enabled=self.modifier_enabled.get(),
+                stroke_range=self.modifier_stroke_range.get(),
+                position_bias=self.modifier_position_bias.get(),
+                smoothing=self.modifier_smoothing.get(),
+                transition_seconds=self.modifier_transition_seconds.get())
+            self._update_modifier_status()
         except (tk.TclError, ValueError) as exc:
             messagebox.showerror("Invalid settings", str(exc))
 
+    def _on_top_focus_changed(self, *_args) -> None:
+        if hasattr(self, "_top_focus_history"):
+            self._top_focus_history.select(self.director_top_focus.get())
+
+    def _on_bottom_focus_changed(self, *_args) -> None:
+        if hasattr(self, "_bottom_focus_history"):
+            self._bottom_focus_history.select(self.director_bottom_focus.get())
+
+    def _focus_history_state(self) -> dict:
+        top = self._top_focus_history.snapshot()
+        bottom = self._bottom_focus_history.snapshot()
+        bottom["strength"] = round(float(self.bottom_focus_strength.get()), 3)
+        bottom["alpha_window"] = [round(x, 3) for x in bottom_focus_window(
+            self.director_bottom_focus.get())]
+        top["strength"] = round(float(self.top_focus_strength.get()), 3)
+        top["nominal_ceiling"] = round(float(self.top_focus_nominal_ceiling.get()), 3)
+        return {"top": top, "bottom": bottom}
+
+    def _spatial_gain_parameters(self, region: str) -> tuple[float, float, float, float]:
+        if region == "top":
+            return (self.top_spatial_gain_step_percent.get() / 100.0,
+                    self.top_spatial_gain_min_percent.get() / 100.0,
+                    self.top_spatial_gain_max_percent.get() / 100.0,
+                    self.spatial_gain_ramp_percent_per_second.get() / 100.0)
+        if region == "bottom":
+            return (self.bottom_spatial_gain_step_percent.get() / 100.0,
+                    self.bottom_spatial_gain_min_percent.get() / 100.0,
+                    self.bottom_spatial_gain_max_percent.get() / 100.0,
+                    self.spatial_gain_ramp_percent_per_second.get() / 100.0)
+        raise ValueError("region must be top or bottom")
+
+    def _change_spatial_gain(self, region: str, action: str) -> dict:
+        step, minimum, maximum, ramp = self._spatial_gain_parameters(region)
+        ctl = self._top_spatial_gain if region == "top" else self._bottom_spatial_gain
+        display = self.top_spatial_gain_display if region == "top" else self.bottom_spatial_gain_display
+        if action == "increase":
+            ctl.step(+1, step=step, minimum=minimum, maximum=maximum)
+        elif action == "decrease":
+            ctl.step(-1, step=step, minimum=minimum, maximum=maximum)
+        elif action == "restore":
+            ctl.restore(minimum=minimum, maximum=maximum)
+        else:
+            raise ValueError("action must be increase, decrease, or restore")
+        display.set(f"{ctl.target * 100:.0f}% target")
+        self._save_settings()
+        return ctl.snapshot(step=step, minimum=minimum, maximum=maximum,
+                            ramp_per_second=ramp)
+
+    TARGETING_PRESETS = {
+        "authored": (1.0, 0.0),
+        "base_prostate_broad": (0.70, -0.15),
+        "base_prostate_focused": (0.50, -0.25),
+        "base_prostate_tight": (0.30, -0.35),
+        "glans_perineum_broad": (0.70, 0.15),
+        "glans_perineum_focused": (0.50, 0.25),
+        "glans_perineum_tight": (0.30, 0.35),
+    }
+
+    def _apply_targeting_preset(self, preset: str) -> dict:
+        if preset not in self.TARGETING_PRESETS:
+            raise ValueError("unknown targeting preset")
+        stroke_range, bias = self.TARGETING_PRESETS[preset]
+        if preset == "authored":
+            self.modifier_enabled.set(False)
+        else:
+            self.modifier_enabled.set(True)
+        self.modifier_stroke_range.set(stroke_range)
+        self.modifier_position_bias.set(bias)
+        if preset != "authored":
+            self.modifier_smoothing.set(0.0)
+        self.apply_config()
+        self._save_settings()
+        return {
+            "preset": preset,
+            "enabled": bool(self.modifier_enabled.get()),
+            "stroke_range": round(float(self.modifier_stroke_range.get()), 3),
+            "position_bias": round(float(self.modifier_position_bias.get()), 3),
+            "transition_seconds": round(float(self.modifier_transition_seconds.get()), 3),
+        }
+
+    def _adjust_director_stroke_range(self, action: str) -> dict:
+        action = str(action or "").strip().lower()
+        current = float(self.modifier_stroke_range.get())
+        if action == "narrower":
+            target = max(0.30, current - 0.10)
+        elif action == "wider":
+            target = min(1.50, current + 0.10)
+        elif action == "restore":
+            target = 1.0
+        else:
+            raise ValueError("action must be narrower, wider, or restore")
+        # Stroke-range changes are intentionally independent of position bias.
+        # If another modifier is active, preserve it; otherwise enable only when
+        # the requested range differs from authored 1.0.
+        self.modifier_stroke_range.set(target)
+        if abs(target - 1.0) > 1e-9 or abs(float(self.modifier_position_bias.get())) > 1e-9 or abs(float(self.modifier_smoothing.get())) > 1e-9:
+            self.modifier_enabled.set(True)
+        elif action == "restore":
+            self.modifier_enabled.set(False)
+        self.apply_config()
+        self._save_settings()
+        return {
+            "action": action,
+            "enabled": bool(self.modifier_enabled.get()),
+            "stroke_range": round(float(self.modifier_stroke_range.get()), 3),
+            "position_bias": round(float(self.modifier_position_bias.get()), 3),
+            "transition_seconds": round(float(self.modifier_transition_seconds.get()), 3),
+        }
+
+    def _tempo_energy_band(self) -> str | None:
+        snap = self.timeline.snapshot()
+        now = snap.get("now") if isinstance(snap, dict) else None
+        if isinstance(now, dict):
+            band = str(now.get("energy_band") or "").strip().lower()
+            return band or None
+        return None
+
+    def _start_director_tempo_window(self, scale: float, duration: float) -> dict:
+        if scale not in (0.5, 2.0):
+            raise ValueError("tempo scale must be 0.5 or 2.0")
+        allowed = (10.0, 15.0, 30.0, 60.0, 90.0, 120.0)
+        if duration not in allowed:
+            raise ValueError("duration must be one of 10, 15, 30, 60, 90 or 120 seconds")
+        media_pos = self.timeline.position_seconds()
+        if media_pos is None or not self.timeline.loaded:
+            raise ValueError("load and synchronize a funscript timeline before starting a tempo window")
+        band = self._tempo_energy_band()
+        # Commissioning guard: doubled tempo over an already challenging/testing
+        # authored section is intentionally a short challenge.
+        if scale == 2.0 and band in ("challenging", "testing") and duration > 15.0:
+            raise ValueError(f"2x tempo is limited to 10 or 15 seconds while authored energy is {band}")
+        self.modifier_tempo_scale.set(scale)
+        self.modifier_tempo_duration_seconds.set(duration)
+        self.start_tempo_window()
+        return {
+            "scale": scale,
+            "duration_seconds": duration,
+            "energy_band_at_start": band,
+            "transition_seconds": round(float(self.modifier_transition_seconds.get()), 3),
+        }
+
+    def _director_capabilities(self) -> dict:
+        return {
+            "api_version": "0.9",
+            "commands": {
+                "preset": ["Baseline", "A", "B"],
+                "rolling_variety": ["on", "off"],
+                "neutral": True,
+                "stop": {"enabled": True, "effect": "zero output and stop engine until Resume"},
+                "generated_motion": {
+                    "enabled": True,
+                    "patterns": list(PATTERNS),
+                    "minimum": [0.0, 0.90],
+                    "maximum": [0.10, 1.0],
+                    "minimum_travel": 0.10,
+                    "stroke_duration_ms": [125, 3000],
+                    "transition_seconds": [1, 15],
+                    "duration_seconds": [30, 600],
+                    "default_source": "authored_tcode",
+                    "status": "Vector validates plans and deterministically generates fixed-cadence L0; raw samples are never accepted from Director.",
+                },
+                "modifier": {
+                    "targeting_presets": list(self.TARGETING_PRESETS.keys()),
+                    "stroke_range_actions": ["narrower", "wider", "restore"],
+                    "stroke_range_step": 0.10,
+                    "tempo_scales": [0.5, 2.0],
+                    "tempo_durations_seconds": [10, 15, 30, 60, 90, 120],
+                    "high_energy_2x_limit_seconds": 15,
+                    "transition_seconds": round(float(self.modifier_transition_seconds.get()), 3),
+                    "note": "Vector owns bounded deterministic maths; Director chooses semantic preset and time window.",
+                },
+                "semantic": {
+                    "texture": {
+                        "all_labels": list(self.TEXTURE_PROFILE_NAMES),
+                        "available": [name for name in self.TEXTURE_PROFILE_NAMES
+                                      if name in self._director_texture_profiles],
+                    },
+                    "primary_spatial": list(self.PRIMARY_SPATIAL_NAMES.keys()),
+                    "secondary_spatial": list(self.SECONDARY_SPATIAL_NAMES.keys()),
+                    "variation": {
+                        "all_labels": list(self.VARIATION_PROFILE_NAMES),
+                        "available": [name for name in self.VARIATION_PROFILE_NAMES
+                                      if name in self._director_variation_profiles],
+                    },
+                    "top_focus": {
+                        "all_labels": list(self.TOP_FOCUS_PROFILE_NAMES),
+                        "available": list(self.TOP_FOCUS_PROFILE_NAMES),
+                        "implementation": "E1-E4 neutral-centred weighting with nominal headroom",
+                        "anatomy": {
+                            "E1": "glans",
+                            "E2": "shaft",
+                            "E3": "lower shaft",
+                            "E4": "root",
+                        },
+                    },
+                    "bottom_focus": {
+                        "all_labels": list(self.BOTTOM_FOCUS_PROFILE_NAMES),
+                        "available": list(self.BOTTOM_FOCUS_PROFILE_NAMES),
+                        "implementation": "secondary Alpha excursion window / dwell bias",
+                        "anatomy": {
+                            "A": "prostate",
+                            "B": "anus",
+                            "C": "testicles/perineum",
+                        },
+                    },
+                },
+            },
+            "timeline": {
+                "enabled": True,
+                "read_only": True,
+                "clock_sources": [FunscriptTimeline.CLOCK_MFP, FunscriptTimeline.CLOCK_MANUAL],
+                "horizons_seconds": [1, 10, 30],
+                "status": "full-funscript lookahead; MFP pattern-sync or internal manual preview clock",
+            },
+            "spatial_focus_note": "For best effect, ensure electrode strength is properly calibrated in ReStim for the active electrode configuration.",
+            "signal_authority": {
+                "axis_control": {
+                    "enabled": True,
+                    "status": "bounded generated-motion plans only; direct raw-axis authority remains unavailable",
+                },
+                "spatial_gain": {
+                    "enabled": True,
+                    "top": {
+                        "actions": ["increase", "decrease", "restore"],
+                        "step_percent": round(self.top_spatial_gain_step_percent.get(), 1),
+                        "minimum_percent": round(self.top_spatial_gain_min_percent.get(), 1),
+                        "maximum_percent": round(self.top_spatial_gain_max_percent.get(), 1),
+                    },
+                    "bottom": {
+                        "actions": ["increase", "decrease", "restore"],
+                        "step_percent": round(self.bottom_spatial_gain_step_percent.get(), 1),
+                        "minimum_percent": round(self.bottom_spatial_gain_min_percent.get(), 1),
+                        "maximum_percent": round(self.bottom_spatial_gain_max_percent.get(), 1),
+                    },
+                    "ramp_percent_per_second": round(self.spatial_gain_ramp_percent_per_second.get(), 1),
+                    "status": "bounded Vector-owned final V0 overlay; anatomical focus location is preserved",
+                },
+            },
+        }
+
+    def _director_controller_state(self) -> dict:
+        snapshot = dict(self._controller_snapshot)
+        snapshot.update({
+            "ok": True,
+            "sequence": self._controller_state_sequence,
+            "source": "windows_xinput",
+            "ptt_policy": "LB alone; LB+D-pad remains a Vector control gesture",
+        })
+        return snapshot
+
+    def _director_state(self) -> dict:
+        diag = self.engine.diagnostics()
+        live_axes = sorted(self.axis_router.live_axes())
+        routing = ("AUTO AUTHORED RESTIM"
+                   if self.authored_routing_mode.get() == "Auto authored ReStim set"
+                   and self.axis_router.auto_authored_active(time.monotonic())
+                   else "VECTOR GENERATION")
+        preset_label = None
+        if self._preset_active in ("A", "B"):
+            preset_label = self.preset_a_name.get() if self._preset_active == "A" else self.preset_b_name.get()
+        elif self._preset_active == "Baseline":
+            preset_label = "Baseline"
+        control = self.engine.control_state()
+        mfp_receiving = self.mfp_status.get().startswith(("Receiving", "MFP Receiving"))
+        return {
+            "ok": True,
+            "vector_version": __version__,
+            "running": control["engine_state"] == "Running" and control["output_enabled"],
+            "engine_state": control["engine_state"],
+            "input_state": "Receiving" if mfp_receiving else "Idle",
+            "output_enabled": control["output_enabled"],
+            "mfp": {
+                "receiving": mfp_receiving,
+                "routing_mode": routing,
+                "live_axes": live_axes,
+            },
+            "motion_source": self.generated_motion.snapshot(),
+            "restim": {
+                "primary_connected": self.restim.connected,
+                "prostate_connected": self.prostate_restim.connected,
+            },
+            "preset": {
+                "active": self._preset_active,
+                "name": preset_label,
+                "status": self.preset_status.get(),
+            },
+            "rolling_variety": {
+                "enabled": self.variety_enabled.get(),
+                "status": self.variety_status.get(),
+                "depth": round(float(diag.variation_depth), 4),
+            },
+            "signal": self.engine.director_signal_snapshot(),
+            "motion": {
+                "l0": round(float(diag.output_l0), 4),
+                "speed_percent": round(float(diag.speed_percent), 2),
+                "alpha": round(float(diag.alpha), 4),
+                "beta": round(float(diag.beta), 4),
+                "stroke_progress": round(float(diag.stroke_progress), 4),
+                "reversal_distance_seconds": (None if not math.isfinite(diag.reversal_distance_seconds)
+                                                else round(float(diag.reversal_distance_seconds), 3)),
+            },
+            "future": self.engine.director_forecast(),
+            "timeline": self.timeline.snapshot(),
+            "semantic": {
+                "texture": self._active_director_profile("texture"),
+                "primary_spatial": {
+                    "id": ("top_depth_spread" if self.four_phase_spatial_model.get() == "Depth spread"
+                           else "top_moving_focus"),
+                    "label": (self.PRIMARY_SPATIAL_NAMES["top_depth_spread"]
+                              if self.four_phase_spatial_model.get() == "Depth spread"
+                              else self.PRIMARY_SPATIAL_NAMES["top_moving_focus"]),
+                },
+                "secondary_spatial": {
+                    "id": "bottom_focus",
+                    "label": self.SECONDARY_SPATIAL_NAMES["bottom_focus"],
+                },
+                "variation": self._active_director_profile("variation"),
+                "top_focus": self.director_top_focus.get(),
+                "bottom_focus": self.director_bottom_focus.get(),
+                "anatomy_map": {
+                    "top": {"E1": "glans", "E2": "shaft", "E3": "lower shaft", "E4": "root"},
+                    "bottom": {"A": "prostate", "B": "anus", "C": "testicles/perineum"},
+                },
+                "focus_engine": {
+                    "top_nominal_ceiling": round(float(self.top_focus_nominal_ceiling.get()), 3),
+                    "top_strength": round(float(self.top_focus_strength.get()), 3),
+                    "top_weights": [round(x, 3) for x in top_focus_weights(
+                        self.director_top_focus.get(), diag.output_l0, self.top_focus_strength.get())],
+                    "bottom_strength": round(float(self.bottom_focus_strength.get()), 3),
+                    "bottom_alpha_window": [round(x, 3) for x in bottom_focus_window(
+                        self.director_bottom_focus.get())],
+                },
+            },
+            "modifier": {
+                "enabled": bool(self.modifier_enabled.get()),
+                "stroke_range": round(float(self.modifier_stroke_range.get()), 3),
+                "position_bias": round(float(self.modifier_position_bias.get()), 3),
+                "smoothing": round(float(self.modifier_smoothing.get()), 3),
+                "transition_seconds": round(float(self.modifier_transition_seconds.get()), 3),
+                "tempo_scale": round(float(self._tempo_scale_active), 3),
+                "tempo_status": self.modifier_tempo_status.get(),
+            },
+            "focus_history": self._focus_history_state(),
+            "spatial_gain": {
+                "top": self._top_spatial_gain.snapshot(
+                    step=self._spatial_gain_parameters("top")[0],
+                    minimum=self._spatial_gain_parameters("top")[1],
+                    maximum=self._spatial_gain_parameters("top")[2],
+                    ramp_per_second=self._spatial_gain_parameters("top")[3]),
+                "bottom": self._bottom_spatial_gain.snapshot(
+                    step=self._spatial_gain_parameters("bottom")[0],
+                    minimum=self._spatial_gain_parameters("bottom")[1],
+                    maximum=self._spatial_gain_parameters("bottom")[2],
+                    ramp_per_second=self._spatial_gain_parameters("bottom")[3]),
+            },
+            "controller": self._director_controller_state(),
+            "capabilities": self._director_capabilities(),
+        }
+
+    def _drain_director_requests(self) -> None:
+        while True:
+            try:
+                request = self.director_bridge.get_nowait()
+            except queue.Empty:
+                return
+            try:
+                if request.method == "GET" and request.path == "/v1/state":
+                    request.status, request.response = 200, self._director_state()
+                elif request.method == "GET" and request.path == "/v1/controller":
+                    request.status, request.response = 200, self._director_controller_state()
+                elif request.method == "GET" and request.path == "/v1/capabilities":
+                    request.status, request.response = 200, {"ok": True, **self._director_capabilities()}
+                elif request.method == "POST" and request.path == "/v1/preset":
+                    preset = str(request.body.get("preset", "")).strip()
+                    if preset not in ("Baseline", "A", "B"):
+                        request.status = 400
+                        request.response = {"ok": False, "error": "preset must be Baseline, A, or B"}
+                    elif preset in ("A", "B") and preset not in self._preset_slots:
+                        request.status = 409
+                        request.response = {"ok": False, "error": f"Preset {preset} is empty"}
+                    else:
+                        self._apply_preset(preset)
+                        request.status = 202
+                        request.response = {"ok": True, "accepted": True, "preset": preset,
+                                            "state": "transitioning"}
+                elif request.method == "POST" and request.path == "/v1/rolling-variety":
+                    enabled = request.body.get("enabled")
+                    if not isinstance(enabled, bool):
+                        request.status = 400
+                        request.response = {"ok": False, "error": "enabled must be true or false"}
+                    else:
+                        self.variety_enabled.set(enabled)
+                        self._variety_toggle()
+                        self.apply_config()
+                        request.status = 200
+                        request.response = {"ok": True, "enabled": enabled}
+                elif request.method == "POST" and request.path == "/v1/generated-motion/plan":
+                    plan = MotionPlan.validated(request.body)
+                    state = self.generated_motion.apply(plan, self.engine.diagnostics().output_l0)
+                    request.status = 202
+                    request.response = {"ok": True, "accepted": True, "motion_source": state}
+                elif request.method == "POST" and request.path == "/v1/generated-motion/hold":
+                    request.status = 200
+                    request.response = {"ok": True, "motion_source": self.generated_motion.hold()}
+                elif request.method == "POST" and request.path == "/v1/generated-motion/resume":
+                    request.status = 200
+                    request.response = {"ok": True, "motion_source": self.generated_motion.resume()}
+                elif request.method == "POST" and request.path == "/v1/generated-motion/authored":
+                    request.status = 200
+                    request.response = {"ok": True, "motion_source": self.generated_motion.authored()}
+                elif request.method == "POST" and request.path == "/v1/semantic/texture":
+                    label = str(request.body.get("texture", "")).strip()
+                    if label not in self.TEXTURE_PROFILE_NAMES:
+                        request.status = 400
+                        request.response = {"ok": False, "error": "unknown texture label"}
+                    elif label not in self._director_texture_profiles:
+                        request.status = 409
+                        request.response = {"ok": False, "error": f"Texture {label} is not captured"}
+                    else:
+                        self._apply_director_profile("texture", label)
+                        request.status = 200
+                        request.response = {"ok": True, "texture": label}
+                elif request.method == "POST" and request.path == "/v1/semantic/primary-spatial":
+                    choice = str(request.body.get("primary_spatial", "")).strip()
+                    if choice not in self.PRIMARY_SPATIAL_NAMES:
+                        request.status = 400
+                        request.response = {"ok": False, "error": "unknown primary spatial choice"}
+                    else:
+                        self._set_director_primary_spatial(choice)
+                        request.status = 200
+                        request.response = {"ok": True, "primary_spatial": choice}
+                elif request.method == "POST" and request.path == "/v1/semantic/secondary-spatial":
+                    choice = str(request.body.get("secondary_spatial", "")).strip()
+                    if choice not in self.SECONDARY_SPATIAL_NAMES:
+                        request.status = 400
+                        request.response = {"ok": False, "error": "unknown secondary spatial choice"}
+                    else:
+                        self.director_secondary_spatial.set(choice)
+                        self._save_settings()
+                        request.status = 200
+                        request.response = {"ok": True, "secondary_spatial": choice}
+                elif request.method == "POST" and request.path == "/v1/semantic/variation":
+                    label = str(request.body.get("variation", "")).strip()
+                    if label not in self.VARIATION_PROFILE_NAMES:
+                        request.status = 400
+                        request.response = {"ok": False, "error": "unknown variation label"}
+                    elif label not in self._director_variation_profiles:
+                        request.status = 409
+                        request.response = {"ok": False, "error": f"Variation {label} is not captured"}
+                    else:
+                        self._apply_director_profile("variation", label)
+                        request.status = 200
+                        request.response = {"ok": True, "variation": label}
+                elif request.method == "POST" and request.path == "/v1/semantic/top-focus":
+                    label = str(request.body.get("top_focus", "")).strip()
+                    if label not in self.TOP_FOCUS_PROFILE_NAMES:
+                        request.status = 400
+                        request.response = {"ok": False, "error": "unknown top-focus label"}
+                    else:
+                        self.director_top_focus.set(label)
+                        self._save_settings()
+                        request.status = 200
+                        request.response = {"ok": True, "top_focus": label,
+                                            "weights": [round(x, 3) for x in top_focus_weights(
+                                                label, self.engine.diagnostics().output_l0, self.top_focus_strength.get())]}
+                elif request.method == "POST" and request.path == "/v1/semantic/bottom-focus":
+                    label = str(request.body.get("bottom_focus", "")).strip()
+                    if label not in self.BOTTOM_FOCUS_PROFILE_NAMES:
+                        request.status = 400
+                        request.response = {"ok": False, "error": "unknown bottom-focus label"}
+                    else:
+                        self.director_bottom_focus.set(label)
+                        self._save_settings()
+                        request.status = 200
+                        request.response = {"ok": True, "bottom_focus": label,
+                                            "alpha_window": list(bottom_focus_window(label))}
+                elif request.method == "POST" and request.path == "/v1/modifier/stroke-range":
+                    action = str(request.body.get("action", "")).strip().lower()
+                    try:
+                        state = self._adjust_director_stroke_range(action)
+                    except ValueError as exc:
+                        request.status = 400
+                        request.response = {"ok": False, "error": str(exc)}
+                    else:
+                        request.status = 200
+                        request.response = {"ok": True, "stroke_range": state}
+                elif request.method == "POST" and request.path == "/v1/modifier/target":
+                    preset = str(request.body.get("preset", "")).strip().lower()
+                    try:
+                        state = self._apply_targeting_preset(preset)
+                    except ValueError as exc:
+                        request.status = 400
+                        request.response = {"ok": False, "error": str(exc)}
+                    else:
+                        request.status = 200
+                        request.response = {"ok": True, "targeting": state}
+                elif request.method == "POST" and request.path == "/v1/modifier/tempo":
+                    try:
+                        scale = float(request.body.get("scale"))
+                        duration = float(request.body.get("duration_seconds"))
+                        state = self._start_director_tempo_window(scale, duration)
+                    except (TypeError, ValueError) as exc:
+                        request.status = 400
+                        request.response = {"ok": False, "error": str(exc)}
+                    else:
+                        request.status = 200
+                        request.response = {"ok": True, "tempo": state}
+                elif request.method == "POST" and request.path == "/v1/modifier/restore":
+                    self.reset_modifiers()
+                    self.restore_tempo()
+                    request.status = 200
+                    request.response = {"ok": True, "modifier": "authored", "tempo_scale": 1.0}
+                elif request.method == "POST" and request.path in ("/v1/spatial-gain/top", "/v1/spatial-gain/bottom"):
+                    region = request.path.rsplit("/", 1)[-1]
+                    action = str(request.body.get("action", "")).strip().lower()
+                    if action not in ("increase", "decrease", "restore"):
+                        request.status = 400
+                        request.response = {"ok": False, "error": "action must be increase, decrease, or restore"}
+                    else:
+                        state = self._change_spatial_gain(region, action)
+                        request.status = 200
+                        request.response = {"ok": True, "region": region, "action": action,
+                                            "spatial_gain": state}
+                elif request.method == "POST" and request.path == "/v1/neutral":
+                    self.neutral()
+                    request.status = 200
+                    request.response = {"ok": True, "state": "neutral"}
+                elif request.method == "POST" and request.path == "/v1/stop":
+                    self.stop()
+                    request.status = 200
+                    request.response = {"ok": True, "state": "stopped", "output_volume": 0.0}
+                elif request.method == "POST" and request.path == "/v1/resume":
+                    self.resume()
+                    request.status = 200
+                    request.response = {"ok": True, "state": "buffering", "resumed": True}
+                else:
+                    request.status = 404
+                    request.response = {"ok": False, "error": "not found"}
+            except Exception as exc:
+                request.status = 500
+                request.response = {"ok": False, "error": str(exc)}
+            finally:
+                request.completed.set()
+
+    def _start_director(self) -> None:
+        if self.director_server.running:
+            self.director_status.set(f"DIRECTOR: {self.director_host.get()}:{self.director_port.get()}")
+            return
+        try:
+            host, port = self.director_server.start(self.director_host.get().strip(), self.director_port.get())
+        except (OSError, ValueError) as exc:
+            self.director_status.set("DIRECTOR: ERROR")
+            messagebox.showerror("Director API", str(exc))
+            return
+        self.director_status.set(f"DIRECTOR: {host}:{port}")
+
+    def _stop_director(self) -> None:
+        self.director_server.stop()
+        self.director_status.set("DIRECTOR: OFF")
+
+    def _director_enabled_changed(self) -> None:
+        if self.director_enabled.get():
+            self._start_director()
+        else:
+            self._stop_director()
+        self._save_settings()
+
+    def _auto_start_director(self) -> None:
+        if self.director_enabled.get():
+            self._start_director()
+
+    def show_director_window(self) -> None:
+        if self._director_window is not None and self._director_window.winfo_exists():
+            self._director_window.lift()
+            return
+        window = tk.Toplevel(self.root)
+        self._director_window = window
+        window.title("Director API")
+        window.resizable(False, False)
+        body = ttk.Frame(window, padding=16)
+        body.grid(sticky="nsew")
+        ttk.Label(body, text=(
+            "Optional loopback-only control interface. Vector remains fully standalone; "
+            "no AI, voice, Ollama, or Gwendolyn component is required."), wraplength=650,
+            justify="left").grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 12))
+        ttk.Checkbutton(body, text="Enable local Director API", variable=self.director_enabled,
+                        command=self._director_enabled_changed).grid(row=1, column=0, columnspan=2, sticky="w")
+        ttk.Label(body, text="Host").grid(row=2, column=0, sticky="w", pady=(10, 2))
+        ttk.Entry(body, textvariable=self.director_host, width=18).grid(row=2, column=1, sticky="w", padx=6)
+        ttk.Label(body, text="Port").grid(row=2, column=2, sticky="e")
+        ttk.Spinbox(body, from_=1024, to=65535, textvariable=self.director_port, width=8).grid(row=2, column=3, padx=6)
+        ttk.Label(body, textvariable=self.director_status,
+                  font=("TkDefaultFont", 10, "bold")).grid(row=3, column=0, columnspan=4, sticky="w", pady=(10, 4))
+        ttk.Label(body, text=("v0.5 commands: state/capabilities, Preset A/B/Baseline, Rolling Variety, Neutral, "
+                              "semantic Texture/Spatial Focus/Variation, plus bounded Top/Bottom Spatial Gain."),
+                  foreground="#555", wraplength=650, justify="left").grid(row=4, column=0, columnspan=4, sticky="w")
+        ttk.Label(body, text=(
+            "For best Spatial Focus effect, ensure electrode strength is properly calibrated in ReStim "
+            "for the active electrode configuration. Spatial Gain is bounded and smoothly ramped by Vector."),
+            foreground="#8a5a00", wraplength=650, justify="left").grid(
+                row=5, column=0, columnspan=4, sticky="w", pady=(6, 12))
+        ttk.Button(body, text="Semantic profiles", command=self.show_director_semantic_window).grid(row=6, column=0, sticky="w")
+        ttk.Button(body, text="Funscript timeline...", command=self.show_timeline_window).grid(row=6, column=1, sticky="w", padx=6)
+        ttk.Button(body, text="Save", command=self._save_settings).grid(row=6, column=2, sticky="w", padx=6)
+        ttk.Button(body, text="Close", command=window.destroy).grid(row=6, column=3, sticky="e")
+
+    def show_timeline_window(self) -> None:
+        if self._timeline_window is not None and self._timeline_window.winfo_exists():
+            self._timeline_window.lift()
+            return
+        window = tk.Toplevel(self.root)
+        self._timeline_window = window
+        window.title("Funscript Timeline")
+        window.resizable(False, False)
+        body = ttk.Frame(window, padding=16)
+        body.grid(sticky="nsew")
+        ttk.Label(body, text=(
+            "Read-only authored-script visibility. Vector can follow VLC/MPC directly and automatically resolve "
+            "a matching .funscript, or fall back to MFP pattern sync/manual preview. Timeline data never drives output."),
+            wraplength=700, justify="left").grid(row=0, column=0, columnspan=5, sticky="w", pady=(0, 12))
+        ttk.Label(body, text="Funscript").grid(row=1, column=0, sticky="w")
+        ttk.Label(body, textvariable=self.timeline_file_display, width=55).grid(row=1, column=1, columnspan=3, sticky="w", padx=6)
+        ttk.Button(body, text="Load...", command=self._timeline_browse).grid(row=1, column=4, sticky="e")
+        ttk.Label(body, text="Clock source").grid(row=2, column=0, sticky="w", pady=(10, 2))
+        clock = ttk.Combobox(body, textvariable=self.timeline_clock_source, state="readonly", width=22,
+                             values=(FunscriptTimeline.CLOCK_AUTO, FunscriptTimeline.CLOCK_VLC,
+                                     FunscriptTimeline.CLOCK_MPC, FunscriptTimeline.CLOCK_MFP,
+                                     FunscriptTimeline.CLOCK_MANUAL))
+        clock.grid(row=2, column=1, sticky="w", padx=6)
+        clock.bind("<<ComboboxSelected>>", lambda _e: self._timeline_clock_changed())
+        ttk.Label(body, text="Player host").grid(row=3, column=0, sticky="w", pady=(10, 2))
+        ttk.Entry(body, textvariable=self.timeline_media_host, width=18).grid(row=3, column=1, sticky="w", padx=6)
+        ttk.Label(body, text="VLC port").grid(row=3, column=2, sticky="e")
+        ttk.Entry(body, textvariable=self.timeline_vlc_port, width=8).grid(row=3, column=3, sticky="w", padx=6)
+        ttk.Label(body, text="MPC port").grid(row=3, column=4, sticky="w")
+        ttk.Entry(body, textvariable=self.timeline_mpc_port, width=8).grid(row=3, column=5, sticky="w", padx=6)
+        ttk.Label(body, text="VLC HTTP password").grid(row=4, column=0, sticky="w", pady=(6, 2))
+        ttk.Entry(body, textvariable=self.timeline_vlc_password, show="*", width=18).grid(row=4, column=1, sticky="w", padx=6)
+        ttk.Checkbutton(body, text="Auto-load matching funscript", variable=self.timeline_auto_load_script).grid(row=4, column=2, columnspan=2, sticky="w")
+        ttk.Button(body, text="Apply player settings", command=self._apply_timeline_media_settings).grid(row=4, column=4, columnspan=2, sticky="w")
+        ttk.Label(body, text="Script libraries (; separated)").grid(row=5, column=0, sticky="w", pady=(6, 2))
+        ttk.Entry(body, textvariable=self.timeline_script_libraries, width=70).grid(row=5, column=1, columnspan=5, sticky="ew", padx=6)
+        ttk.Label(body, text="Manual position (s)").grid(row=6, column=0, sticky="w", pady=(10, 2))
+        ttk.Spinbox(body, from_=0, to=99999, increment=1, textvariable=self.timeline_manual_position, width=10).grid(row=6, column=1, sticky="w", padx=6)
+        ttk.Button(body, text="Seek", command=self._timeline_seek).grid(row=6, column=2, sticky="w")
+        ttk.Button(body, text="Play preview", command=self._timeline_play).grid(row=6, column=3, sticky="w", padx=6)
+        ttk.Button(body, text="Pause", command=self._timeline_pause).grid(row=6, column=4, sticky="w")
+        ttk.Separator(body, orient="horizontal").grid(row=7, column=0, columnspan=6, sticky="ew", pady=12)
+        ttk.Label(body, textvariable=self.timeline_status_display, wraplength=760, justify="left").grid(row=8, column=0, columnspan=6, sticky="w")
+        ttk.Label(body, text=(
+            "Auto media player tries VLC first, then MPC. For local media, Vector reads the authoritative player time and "
+            "looks beside the media for <video name>.funscript, then in configured script libraries. MFP pattern sync remains a fallback."),
+            foreground="#555", wraplength=760, justify="left").grid(row=9, column=0, columnspan=6, sticky="w", pady=(8, 12))
+        ttk.Button(body, text="Close", command=window.destroy).grid(row=10, column=5, sticky="e")
+        self._refresh_timeline_window()
+
+    def _timeline_browse(self) -> None:
+        path = filedialog.askopenfilename(title="Load funscript", filetypes=[("Funscript", "*.funscript"), ("JSON", "*.json"), ("All files", "*.*")])
+        if not path:
+            return
+        try:
+            meta = self.timeline.load(path)
+            self.timeline_file_display.set(meta.get("file") or path)
+            self.timeline_status_display.set(f"Loaded {meta['actions']} actions, {meta['duration_seconds']:.1f} s")
+            self._timeline_clock_changed()
+        except Exception as exc:
+            messagebox.showerror("Funscript Timeline", str(exc))
+
+    def _apply_timeline_media_settings(self) -> None:
+        libraries = [x.strip() for x in self.timeline_script_libraries.get().split(";") if x.strip()]
+        try:
+            self.timeline.configure_media(
+                host=self.timeline_media_host.get(),
+                vlc_port=self.timeline_vlc_port.get(),
+                vlc_password=self.timeline_vlc_password.get(),
+                mpc_port=self.timeline_mpc_port.get(),
+                library_dirs=libraries,
+                auto_load_script=self.timeline_auto_load_script.get(),
+            )
+            self.timeline.set_clock_mode(self.timeline_clock_source.get())
+            self.timeline.request_media_poll()
+            if self._timeline_window is not None and self._timeline_window.winfo_exists():
+                self._refresh_timeline_window()
+        except Exception as exc:
+            if self._timeline_window is not None and self._timeline_window.winfo_exists():
+                messagebox.showerror("Funscript Timeline", str(exc))
+
+    def _timeline_clock_changed(self) -> None:
+        try:
+            self.timeline.set_clock_mode(self.timeline_clock_source.get())
+            self._refresh_timeline_window()
+        except Exception as exc:
+            messagebox.showerror("Funscript Timeline", str(exc))
+
+    def _timeline_seek(self) -> None:
+        self.timeline.set_clock_mode(FunscriptTimeline.CLOCK_MANUAL)
+        self.timeline_clock_source.set(FunscriptTimeline.CLOCK_MANUAL)
+        self.timeline.manual_seek(self.timeline_manual_position.get())
+        self._refresh_timeline_window()
+
+    def _timeline_play(self) -> None:
+        self.timeline.set_clock_mode(FunscriptTimeline.CLOCK_MANUAL)
+        self.timeline_clock_source.set(FunscriptTimeline.CLOCK_MANUAL)
+        self.timeline.manual_seek(self.timeline_manual_position.get())
+        self.timeline.manual_play()
+        self._refresh_timeline_window()
+
+    def _timeline_pause(self) -> None:
+        self.timeline.manual_pause()
+        pos = self.timeline.position_seconds()
+        if pos is not None:
+            self.timeline_manual_position.set(round(pos, 2))
+        self._refresh_timeline_window()
+
+    def _refresh_timeline_window(self) -> None:
+        snap = self.timeline.snapshot()
+        if snap.get("loaded"):
+            self.timeline_file_display.set(str(snap.get("file") or "Loaded funscript"))
+        if not snap.get("loaded"):
+            self.timeline_status_display.set("Timeline idle — load a .funscript to enable authored lookahead")
+            return
+        if not snap.get("synced"):
+            conf = snap.get("sync_confidence")
+            suffix = "" if conf is None else f" (match confidence {conf:.0%})"
+            self.timeline_status_display.set("Loaded; waiting for timeline lock" + suffix)
+            return
+        pos = float(snap.get("position_seconds") or 0.0)
+        self.timeline_manual_position.set(round(pos, 2))
+        near = snap.get("next_10_seconds") or {}
+        ahead = snap.get("next_30_seconds") or {}
+        conf = snap.get("sync_confidence")
+        conf_text = "" if conf is None else f" | sync {float(conf):.0%}"
+        player = snap.get("media_player")
+        media_text = f" | {player} {snap.get('media_state') or ''}" if player else ""
+        health = snap.get("media_clock_health")
+        health_text = f" | clock {health}" if player and health else ""
+        raw = snap.get("media_raw_position")
+        source = snap.get("media_position_source")
+        raw_text = f" | raw {raw} ({source})" if player and raw is not None else ""
+        auto_note = f" | {snap.get('auto_load_note')}" if snap.get("auto_load_note") else ""
+        self.timeline_status_display.set(
+            f"Position {pos:.2f}s{conf_text}{media_text}{health_text}{raw_text} | next 10s: {near.get('energy_band','?')} / {near.get('focus_region','?')} "
+            f"| next 30s trend: {ahead.get('energy_trend','?')}{auto_note}")
+
     def _load_settings(self) -> bool:
         saved = load_settings()
+        # Alpha68 had two perceptually redundant range controls. Preserve the
+        # old global-range value when migrating, and retire stroke-amplitude.
+        if "modifier_stroke_range" not in saved and "modifier_range_scale" in saved:
+            saved["modifier_stroke_range"] = saved.get("modifier_range_scale", 1.0)
         for name in self.SETTINGS_FIELDS:
             if name in saved:
                 try:
@@ -1588,6 +2680,42 @@ class VectorApp:
             for slot in ("A", "B"):
                 if isinstance(slots.get(slot), dict):
                     self._preset_slots[slot] = slots[slot]
+        texture_profiles = saved.get("director_texture_profiles", {})
+        if isinstance(texture_profiles, dict):
+            self._director_texture_profiles = {
+                name: value for name, value in texture_profiles.items()
+                if name in self.TEXTURE_PROFILE_NAMES and isinstance(value, dict)
+            }
+        variation_profiles = saved.get("director_variation_profiles", {})
+        if isinstance(variation_profiles, dict):
+            self._director_variation_profiles = {
+                name: value for name, value in variation_profiles.items()
+                if name in self.VARIATION_PROFILE_NAMES and isinstance(value, dict)
+            }
+        top_focus_profiles = saved.get("director_top_focus_profiles", {})
+        if isinstance(top_focus_profiles, dict):
+            self._director_top_focus_profiles = {
+                name: value for name, value in top_focus_profiles.items()
+                if name in self.TOP_FOCUS_PROFILE_NAMES and isinstance(value, dict)
+            }
+        bottom_focus_profiles = saved.get("director_bottom_focus_profiles", {})
+        if isinstance(bottom_focus_profiles, dict):
+            self._director_bottom_focus_profiles = {
+                name: value for name, value in bottom_focus_profiles.items()
+                if name in self.BOTTOM_FOCUS_PROFILE_NAMES and isinstance(value, dict)
+            }
+        if saved.get("director_texture") in self.TEXTURE_PROFILE_NAMES:
+            self.director_texture.set(saved["director_texture"])
+        if saved.get("director_variation") in self.VARIATION_PROFILE_NAMES:
+            self.director_variation.set(saved["director_variation"])
+        if saved.get("director_top_focus") in self.TOP_FOCUS_PROFILE_NAMES:
+            self.director_top_focus.set(saved["director_top_focus"])
+        if saved.get("director_bottom_focus") in self.BOTTOM_FOCUS_PROFILE_NAMES:
+            self.director_bottom_focus.set(saved["director_bottom_focus"])
+        if saved.get("director_primary_spatial") in self.PRIMARY_SPATIAL_NAMES:
+            self.director_primary_spatial.set(saved["director_primary_spatial"])
+        if saved.get("director_secondary_spatial") in self.SECONDARY_SPATIAL_NAMES:
+            self.director_secondary_spatial.set(saved["director_secondary_spatial"])
         return not bool(saved.get("first_run_complete"))
 
     def _save_settings(self) -> None:
@@ -1595,8 +2723,280 @@ class VectorApp:
         values["four_phase_presets"] = self._preset_slots
         values["authored_axis_routes"] = sorted(self.axis_router.enabled_axes())
         values["authored_routing_mode"] = self.authored_routing_mode.get()
+        values["director_texture_profiles"] = self._director_texture_profiles
+        values["director_variation_profiles"] = self._director_variation_profiles
+        values["director_top_focus_profiles"] = self._director_top_focus_profiles
+        values["director_bottom_focus_profiles"] = self._director_bottom_focus_profiles
+        values["director_texture"] = self.director_texture.get()
+        values["director_variation"] = self.director_variation.get()
+        values["director_top_focus"] = self.director_top_focus.get()
+        values["director_bottom_focus"] = self.director_bottom_focus.get()
+        values["director_primary_spatial"] = self.director_primary_spatial.get()
+        values["director_secondary_spatial"] = self.director_secondary_spatial.get()
         values["first_run_complete"] = True
         save_settings(values)
+
+    def _director_profile_snapshot(self, kind: str) -> dict:
+        if kind == "texture":
+            fields = self.TEXTURE_PROFILE_FIELDS
+        elif kind == "variation":
+            fields = self.VARIATION_PROFILE_FIELDS
+        elif kind == "top_focus":
+            fields = self.TOP_FOCUS_PROFILE_FIELDS
+        elif kind == "bottom_focus":
+            fields = self.BOTTOM_FOCUS_PROFILE_FIELDS
+        else:
+            raise ValueError("unknown Director profile kind")
+        return {name: getattr(self, name).get() for name in fields}
+
+    def _director_profile_matches(self, kind: str, profile: dict) -> bool:
+        current = self._director_profile_snapshot(kind)
+        for name, expected in profile.items():
+            actual = current.get(name)
+            if isinstance(actual, (int, float)) and not isinstance(actual, bool):
+                try:
+                    if abs(float(actual) - float(expected)) > 1e-4:
+                        return False
+                except (TypeError, ValueError):
+                    return False
+            elif actual != expected:
+                return False
+        return True
+
+    def _active_director_profile(self, kind: str) -> str:
+        if kind == "texture":
+            profiles, names = self._director_texture_profiles, self.TEXTURE_PROFILE_NAMES
+        elif kind == "variation":
+            profiles, names = self._director_variation_profiles, self.VARIATION_PROFILE_NAMES
+        elif kind == "top_focus":
+            profiles, names = self._director_top_focus_profiles, self.TOP_FOCUS_PROFILE_NAMES
+        elif kind == "bottom_focus":
+            profiles, names = self._director_bottom_focus_profiles, self.BOTTOM_FOCUS_PROFILE_NAMES
+        else:
+            return "Custom"
+        for label in names:
+            profile = profiles.get(label)
+            if profile and self._director_profile_matches(kind, profile):
+                return label
+        return "Custom"
+
+    def _refresh_director_profile_status(self) -> None:
+        for label, var in self._director_texture_status_vars.items():
+            var.set("Saved" if label in self._director_texture_profiles else "—")
+        for label, var in self._director_variation_status_vars.items():
+            var.set("Saved" if label in self._director_variation_profiles else "—")
+        for label, var in self._director_top_focus_status_vars.items():
+            var.set("Saved" if label in self._director_top_focus_profiles else "—")
+        for label, var in self._director_bottom_focus_status_vars.items():
+            var.set("Saved" if label in self._director_bottom_focus_profiles else "—")
+
+    def _capture_director_profile(self, kind: str, label: str) -> None:
+        if kind == "texture":
+            self._director_texture_profiles[label] = self._director_profile_snapshot(kind)
+            self.director_texture.set(label)
+        elif kind == "variation":
+            self._director_variation_profiles[label] = self._director_profile_snapshot(kind)
+            self.director_variation.set(label)
+        elif kind == "top_focus":
+            self._director_top_focus_profiles[label] = self._director_profile_snapshot(kind)
+            self.director_top_focus.set(label)
+        elif kind == "bottom_focus":
+            self._director_bottom_focus_profiles[label] = self._director_profile_snapshot(kind)
+            self.director_bottom_focus.set(label)
+        else:
+            raise ValueError("unknown Director profile kind")
+        self._save_settings()
+        self._refresh_director_profile_status()
+        self.director_semantic_status.set(f"{label} {kind} profile captured and saved")
+
+    def _apply_director_profile(self, kind: str, label: str) -> None:
+        if kind == "texture":
+            profiles = self._director_texture_profiles
+        elif kind == "variation":
+            profiles = self._director_variation_profiles
+        elif kind == "top_focus":
+            profiles = self._director_top_focus_profiles
+        elif kind == "bottom_focus":
+            profiles = self._director_bottom_focus_profiles
+        else:
+            raise ValueError("unknown Director profile kind")
+        profile = profiles.get(label)
+        if not profile:
+            return
+        for name, value in profile.items():
+            if hasattr(self, name):
+                getattr(self, name).set(value)
+        if kind == "texture":
+            self.director_texture.set(label)
+            self.apply_config()
+        elif kind == "variation":
+            self.director_variation.set(label)
+            self._variety_toggle()
+            self.apply_config()
+        elif kind == "top_focus":
+            self.director_top_focus.set(label)
+            self.apply_config()
+        else:
+            self.director_bottom_focus.set(label)
+            self.apply_config()
+        self._save_settings()
+
+    def _set_director_primary_spatial(self, choice: str) -> None:
+        if choice == "top_moving_focus":
+            self.four_phase_spatial_model.set("Moving focus")
+        elif choice == "top_depth_spread":
+            self.four_phase_spatial_model.set("Depth spread")
+        else:
+            raise ValueError("unknown primary spatial choice")
+        self.director_primary_spatial.set(choice)
+        self.apply_config()
+        self._save_settings()
+
+    def show_director_semantic_window(self) -> None:
+        if self._director_semantic_window is not None and self._director_semantic_window.winfo_exists():
+            self._director_semantic_window.lift()
+            return
+        window = tk.Toplevel(self.root)
+        self._director_semantic_window = window
+        self.director_semantic_status.set("")
+        window.title("Director semantic profiles")
+        window.resizable(False, False)
+        body = ttk.Frame(window, padding=16)
+        body.grid(sticky="nsew")
+        ttk.Label(body, text=(
+            "Texture and Variation remain perceptual profiles. Spatial Focus is now an engine transform: "
+            "top focus weights E1-E4 with headroom; bottom focus remaps the secondary Alpha excursion."),
+            wraplength=720, justify="left").grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 12))
+
+        ttk.Label(body, text="Texture", font=("TkDefaultFont", 10, "bold")).grid(row=1, column=0, sticky="w")
+        ttk.Label(body, text="Captured?").grid(row=1, column=1, sticky="w")
+        ttk.Label(body, text="Capture current").grid(row=1, column=2, sticky="w")
+        ttk.Label(body, text="Apply").grid(row=1, column=3, sticky="w")
+        row = 2
+        for label in self.TEXTURE_PROFILE_NAMES:
+            ttk.Label(body, text=label).grid(row=row, column=0, sticky="w", pady=2)
+            status_var = tk.StringVar(value="Saved" if label in self._director_texture_profiles else "—")
+            self._director_texture_status_vars[label] = status_var
+            ttk.Label(body, textvariable=status_var).grid(row=row, column=1, sticky="w", padx=(10, 20))
+            ttk.Button(body, text="Capture", command=lambda x=label: self._capture_director_profile("texture", x)).grid(row=row, column=2, sticky="w", padx=4)
+            ttk.Button(body, text="Apply", command=lambda x=label: self._apply_director_profile("texture", x)).grid(row=row, column=3, sticky="w", padx=4)
+            row += 1
+
+        ttk.Separator(body, orient="horizontal").grid(row=row, column=0, columnspan=4, sticky="ew", pady=10)
+        row += 1
+        ttk.Label(body, text="Primary spatial", font=("TkDefaultFont", 10, "bold")).grid(row=row, column=0, sticky="w")
+        row += 1
+        for key, label in self.PRIMARY_SPATIAL_NAMES.items():
+            ttk.Radiobutton(body, text=label, value=key, variable=self.director_primary_spatial,
+                            command=lambda k=key: self._set_director_primary_spatial(k)).grid(row=row, column=0, columnspan=3, sticky="w", pady=2)
+            row += 1
+        ttk.Label(body, text="Secondary spatial", font=("TkDefaultFont", 10, "bold")).grid(row=row, column=0, sticky="w", pady=(8, 0))
+        row += 1
+        ttk.Label(body, text="Bottom Focus — existing secondary/prostate generated path").grid(row=row, column=0, columnspan=4, sticky="w")
+        row += 1
+
+        ttk.Separator(body, orient="horizontal").grid(row=row, column=0, columnspan=4, sticky="ew", pady=10)
+        row += 1
+        ttk.Label(body, text="Top Spatial Focus", font=("TkDefaultFont", 10, "bold")).grid(row=row, column=0, sticky="w")
+        ttk.Label(body, text="Model").grid(row=row, column=1, sticky="w")
+        ttk.Label(body, text="").grid(row=row, column=2, sticky="w")
+        ttk.Label(body, text="Apply").grid(row=row, column=3, sticky="w")
+        row += 1
+        ttk.Label(body, text="Electrode map: E1 glans · E2 shaft · E3 lower shaft · E4 root",
+                  foreground="#555").grid(row=row, column=0, columnspan=4, sticky="w", pady=(0,4))
+        row += 1
+        for label in self.TOP_FOCUS_PROFILE_NAMES:
+            ttk.Label(body, text=label).grid(row=row, column=0, sticky="w", pady=2)
+            ttk.Label(body, text="Engine transform").grid(row=row, column=1, sticky="w", padx=(10, 20))
+            ttk.Button(body, text="Apply", command=lambda x=label: (self.director_top_focus.set(x), self._save_settings())).grid(row=row, column=3, sticky="w", padx=4)
+            row += 1
+
+        ttk.Label(body, text="Bottom Spatial Focus", font=("TkDefaultFont", 10, "bold")).grid(row=row, column=0, sticky="w", pady=(8,0))
+        ttk.Label(body, text="Model").grid(row=row, column=1, sticky="w", pady=(8,0))
+        ttk.Label(body, text="").grid(row=row, column=2, sticky="w", pady=(8,0))
+        ttk.Label(body, text="Apply").grid(row=row, column=3, sticky="w", pady=(8,0))
+        row += 1
+        ttk.Label(body, text="Zone map: A prostate · B anus · C testicles/perineum",
+                  foreground="#555").grid(row=row, column=0, columnspan=4, sticky="w", pady=(0,4))
+        row += 1
+        for label in self.BOTTOM_FOCUS_PROFILE_NAMES:
+            ttk.Label(body, text=label).grid(row=row, column=0, sticky="w", pady=2)
+            ttk.Label(body, text="Engine transform").grid(row=row, column=1, sticky="w", padx=(10, 20))
+            ttk.Button(body, text="Apply", command=lambda x=label: (self.director_bottom_focus.set(x), self._save_settings())).grid(row=row, column=3, sticky="w", padx=4)
+            row += 1
+
+        ttk.Label(body, text="Top nominal headroom ceiling").grid(row=row, column=0, sticky="w", pady=(8,0))
+        ttk.Scale(body, from_=0.60, to=1.0, variable=self.top_focus_nominal_ceiling, orient="horizontal", length=220).grid(row=row, column=1, columnspan=2, sticky="w", pady=(8,0))
+        row += 1
+        ttk.Label(body, text="Top focus strength (0–175%)").grid(row=row, column=0, sticky="w")
+        ttk.Scale(body, from_=0.0, to=1.75, variable=self.top_focus_strength, orient="horizontal", length=220).grid(row=row, column=1, columnspan=2, sticky="w")
+        row += 1
+        ttk.Label(body, text="Bottom focus strength").grid(row=row, column=0, sticky="w")
+        ttk.Scale(body, from_=0.0, to=1.0, variable=self.bottom_focus_strength, orient="horizontal", length=220).grid(row=row, column=1, columnspan=2, sticky="w")
+        row += 1
+        ttk.Label(body, text="Top Spatial Gain", font=("TkDefaultFont", 10, "bold")).grid(row=row, column=0, sticky="w", pady=(8,0))
+        ttk.Button(body, text="Decrease", command=lambda: self._change_spatial_gain("top", "decrease")).grid(row=row, column=1, sticky="w", pady=(8,0))
+        ttk.Button(body, text="Increase", command=lambda: self._change_spatial_gain("top", "increase")).grid(row=row, column=2, sticky="w", pady=(8,0))
+        ttk.Button(body, text="Restore", command=lambda: self._change_spatial_gain("top", "restore")).grid(row=row, column=3, sticky="w", pady=(8,0))
+        row += 1
+        ttk.Label(body, text="Top step (%)").grid(row=row, column=0, sticky="w")
+        ttk.Spinbox(body, from_=1, to=25, increment=1, width=7,
+                    textvariable=self.top_spatial_gain_step_percent).grid(row=row, column=1, sticky="w")
+        ttk.Label(body, textvariable=self.top_spatial_gain_display, foreground="#555").grid(row=row, column=2, columnspan=2, sticky="w")
+        row += 1
+        ttk.Label(body, text="Bottom Spatial Gain", font=("TkDefaultFont", 10, "bold")).grid(row=row, column=0, sticky="w", pady=(8,0))
+        ttk.Button(body, text="Decrease", command=lambda: self._change_spatial_gain("bottom", "decrease")).grid(row=row, column=1, sticky="w", pady=(8,0))
+        ttk.Button(body, text="Increase", command=lambda: self._change_spatial_gain("bottom", "increase")).grid(row=row, column=2, sticky="w", pady=(8,0))
+        ttk.Button(body, text="Restore", command=lambda: self._change_spatial_gain("bottom", "restore")).grid(row=row, column=3, sticky="w", pady=(8,0))
+        row += 1
+        ttk.Label(body, text="Bottom step (%)").grid(row=row, column=0, sticky="w")
+        ttk.Spinbox(body, from_=1, to=25, increment=1, width=7,
+                    textvariable=self.bottom_spatial_gain_step_percent).grid(row=row, column=1, sticky="w")
+        ttk.Label(body, textvariable=self.bottom_spatial_gain_display, foreground="#555").grid(row=row, column=2, columnspan=2, sticky="w")
+        row += 1
+        ttk.Label(body, text="Top gain min / max (%)").grid(row=row, column=0, sticky="w")
+        ttk.Spinbox(body, from_=10, to=100, increment=5, width=7,
+                    textvariable=self.top_spatial_gain_min_percent).grid(row=row, column=1, sticky="w")
+        ttk.Spinbox(body, from_=100, to=200, increment=5, width=7,
+                    textvariable=self.top_spatial_gain_max_percent).grid(row=row, column=2, sticky="w")
+        row += 1
+        ttk.Label(body, text="Bottom gain min / max (%)").grid(row=row, column=0, sticky="w")
+        ttk.Spinbox(body, from_=10, to=100, increment=5, width=7,
+                    textvariable=self.bottom_spatial_gain_min_percent).grid(row=row, column=1, sticky="w")
+        ttk.Spinbox(body, from_=100, to=200, increment=5, width=7,
+                    textvariable=self.bottom_spatial_gain_max_percent).grid(row=row, column=2, sticky="w")
+        row += 1
+        ttk.Label(body, text="Spatial gain ramp (%/s)").grid(row=row, column=0, sticky="w")
+        ttk.Spinbox(body, from_=1, to=100, increment=1, width=7,
+                    textvariable=self.spatial_gain_ramp_percent_per_second).grid(row=row, column=1, sticky="w")
+        ttk.Label(body, text="Default 20 percentage points/s", foreground="#555").grid(row=row, column=2, columnspan=2, sticky="w")
+        row += 1
+        ttk.Separator(body, orient="horizontal").grid(row=row, column=0, columnspan=4, sticky="ew", pady=10)
+        row += 1
+        ttk.Label(body, text="Variation", font=("TkDefaultFont", 10, "bold")).grid(row=row, column=0, sticky="w")
+        ttk.Label(body, text="Captured?").grid(row=row, column=1, sticky="w")
+        ttk.Label(body, text="Capture current").grid(row=row, column=2, sticky="w")
+        ttk.Label(body, text="Apply").grid(row=row, column=3, sticky="w")
+        row += 1
+        for label in self.VARIATION_PROFILE_NAMES:
+            ttk.Label(body, text=label).grid(row=row, column=0, sticky="w", pady=2)
+            status_var = tk.StringVar(value="Saved" if label in self._director_variation_profiles else "—")
+            self._director_variation_status_vars[label] = status_var
+            ttk.Label(body, textvariable=status_var).grid(row=row, column=1, sticky="w", padx=(10, 20))
+            ttk.Button(body, text="Capture", command=lambda x=label: self._capture_director_profile("variation", x)).grid(row=row, column=2, sticky="w", padx=4)
+            ttk.Button(body, text="Apply", command=lambda x=label: self._apply_director_profile("variation", x)).grid(row=row, column=3, sticky="w", padx=4)
+            row += 1
+        ttk.Label(body, text="Active texture:").grid(row=row, column=0, sticky="w", pady=(10,0))
+        ttk.Label(body, textvariable=self.director_texture, foreground="#555").grid(row=row, column=1, sticky="w", pady=(10,0))
+        ttk.Label(body, text="Active variation:").grid(row=row+1, column=0, sticky="w")
+        ttk.Label(body, textvariable=self.director_variation, foreground="#555").grid(row=row+1, column=1, sticky="w")
+        ttk.Label(body, text="Active top focus:").grid(row=row+2, column=0, sticky="w")
+        ttk.Label(body, textvariable=self.director_top_focus, foreground="#555").grid(row=row+2, column=1, sticky="w")
+        ttk.Label(body, text="Active bottom focus:").grid(row=row+3, column=0, sticky="w")
+        ttk.Label(body, textvariable=self.director_bottom_focus, foreground="#555").grid(row=row+3, column=1, sticky="w")
+        ttk.Label(body, textvariable=self.director_semantic_status, foreground="#356a35").grid(row=row+4, column=0, columnspan=3, sticky="w", pady=(8,0))
+        ttk.Button(body, text="Close", command=window.destroy).grid(row=row+4, column=3, sticky="e", pady=(8,0))
+        self._refresh_director_profile_status()
 
     def _preset_snapshot(self) -> dict:
         return {name: getattr(self, name).get()
@@ -1718,7 +3118,8 @@ class VectorApp:
             "Vector 1A setup",
             "Safe visual commissioning\n\n"
             "1. Leave stimulation hardware disconnected.\n"
-            "2. In MFP, send L0 by UDP or TCP to 127.0.0.1:12345.\n"
+            "2. In MFP, send L0 by UDP/TCP to 127.0.0.1:12345, or add a WebSocket\n"
+            "   output with URI ws://127.0.0.1:12345/ws. Use one MFP output to Vector.\n"
             "3. Set the MFP script offset to -2.00 seconds.\n"
             "4. Enable the primary ReStim WebSocket server and enter its port in Vector "
             "(normally 12346). Do NOT use ReStim's TCP port (commonly 12347).\n"
@@ -1837,6 +3238,10 @@ class VectorApp:
             electrodes = apply_group_delay(
                 electrodes, list(self._four_phase_history), sample.due_at,
                 self._four_phase_effective_group_delay)
+        electrodes = apply_top_focus(
+            electrodes, self.director_top_focus.get(),
+            nominal_ceiling=self.top_focus_nominal_ceiling.get(),
+            strength=self.top_focus_strength.get(), path_position=path_l0)
         with self._four_phase_live_lock:
             self._four_phase_live_output = (
                 electrodes, morph_source, morph_target, morph_amount, profile_kind)
@@ -1863,18 +3268,64 @@ class VectorApp:
             primary_volume = proportional_reversal_boost(
                 primary_volume, reversal, boost)
         primary_volume = min(1.0, max(0.0, primary_volume))
+        now_gain = time.monotonic()
+        _, _, _, gain_ramp = self._spatial_gain_parameters("top")
+        top_gain = self._top_spatial_gain.update(ramp_per_second=gain_ramp, now=now_gain)
+        _, _, _, bottom_gain_ramp = self._spatial_gain_parameters("bottom")
+        bottom_gain = self._bottom_spatial_gain.update(ramp_per_second=bottom_gain_ramp, now=now_gain)
+        self.top_spatial_gain_display.set(
+            f"{self._top_spatial_gain.target * 100:.0f}% target · {top_gain * 100:.0f}% live")
+        self.bottom_spatial_gain_display.set(
+            f"{self._bottom_spatial_gain.target * 100:.0f}% target · {bottom_gain * 100:.0f}% live")
+        primary_volume = apply_gain(primary_volume, top_gain)
         if self.authored_routing_mode.get() == "Auto authored ReStim set":
             authored_overrides = self.axis_router.snapshot_auto(sample.calculated_at)
         else:
             authored_overrides = self.axis_router.snapshot(sample.calculated_at)
-        self.restim.send_primary(
-            sample.alpha, sample.beta, electrodes, primary_volume, sample.frequency,
-            sample.pulse_frequency, sample.pulse_rise_time, sample.pulse_width,
-            overrides=authored_overrides)
-        self.prostate_restim.send_prostate(
-            sample.alpha_prostate, sample.beta_prostate, sample.volume_prostate,
+        if authored_overrides:
+            e_names = ("E1", "E2", "E3", "E4")
+            source_e = tuple(authored_overrides.get(name, electrodes[i]) for i, name in enumerate(e_names))
+            focused_e = apply_top_focus(
+                source_e, self.director_top_focus.get(),
+                nominal_ceiling=self.top_focus_nominal_ceiling.get(),
+                strength=self.top_focus_strength.get(), path_position=path_l0)
+            authored_overrides = dict(authored_overrides)
+            for name, value in zip(e_names, focused_e):
+                if name in authored_overrides:
+                    authored_overrides[name] = value
+            if "V0" in authored_overrides:
+                authored_overrides["V0"] = apply_gain(authored_overrides["V0"], top_gain)
+        primary_args = (
+            sample.alpha, sample.beta, tuple(electrodes), primary_volume, sample.frequency,
+            sample.pulse_frequency, sample.pulse_rise_time, sample.pulse_width)
+        primary_overrides = dict(authored_overrides) if authored_overrides else None
+        self.restim_sender.submit(
+            lambda args=primary_args, overrides=primary_overrides:
+                self.restim.send_primary(*args, overrides=overrides))
+        focused_alpha_prostate = apply_bottom_focus(
+            sample.alpha_prostate, self.director_bottom_focus.get(),
+            strength=self.bottom_focus_strength.get())
+        bottom_volume = apply_gain(sample.volume_prostate, bottom_gain)
+        prostate_args = (
+            focused_alpha_prostate, sample.beta_prostate, bottom_volume,
             sample.frequency, sample.pulse_frequency, sample.pulse_width,
             sample.pulse_rise_time)
+        self.prostate_sender.submit(
+            lambda args=prostate_args: self.prostate_restim.send_prostate(*args))
+
+    def _receive_l0(self, value: float, interval_ms: int = 0, received_at: float | None = None) -> None:
+        now = time.monotonic() if received_at is None else float(received_at)
+        self._latest_authored_l0 = max(0.0, min(1.0, float(value)))
+        # Timeline sync always observes the untouched authored MFP signal. Tempo is
+        # an output-side deterministic transform and must not poison clock matching.
+        self.timeline.observe_live(value, now)
+        if not self.generated_motion.active:
+            self.engine.receive_l0(self._tempo_l0(value, now), interval_ms, now)
+
+    def _receive_generated_l0(self, value: float, interval_ms: int = 0,
+                              received_at: float | None = None) -> None:
+        now = time.monotonic() if received_at is None else float(received_at)
+        self.engine.receive_l0(self._tempo_l0(value, now), interval_ms, now)
 
     def neutral(self) -> None:
         self.apply_config()
@@ -1882,13 +3333,19 @@ class VectorApp:
         self._motion_send_last_l0 = 0.5
         self._motion_send_direction = 1
         self.engine.neutral()
-        self.restim.send_primary(0.5, 0.5, (0.5, 0.5, 0.5, 0.5),
-                                 self.volume.get(), 0.5, 0.5, 0.5, 0.5)
+        neutral_volume = self.volume.get()
+        self.restim_sender.submit(
+            lambda: self.restim.send_primary(
+                0.5, 0.5, (0.5, 0.5, 0.5, 0.5), neutral_volume, 0.5, 0.5, 0.5, 0.5),
+            max_age_seconds=2.0)
         with self._four_phase_live_lock:
             order = self.electrode_order.get()
             self._four_phase_live_output = (
                 (0.5, 0.5, 0.5, 0.5), order, order, 0.0, "neutral")
-        self.prostate_restim.send_prostate(0.5, 0.5, self.volume.get(), 0.5, 0.5, 0.5, 0.5)
+        self.prostate_sender.submit(
+            lambda: self.prostate_restim.send_prostate(
+                0.5, 0.5, neutral_volume, 0.5, 0.5, 0.5, 0.5),
+            max_age_seconds=2.0)
 
     def resume(self) -> None:
         self.apply_config()
@@ -1896,17 +3353,23 @@ class VectorApp:
         self.engine.resume()
 
     def stop(self) -> None:
+        self.generated_motion.authored()
         self._reset_four_phase_group_delay()
         self._motion_send_last_l0 = 0.5
         self._motion_send_direction = 1
         self.engine.stop()
-        self.restim.send_primary(0.5, 0.5, (0.5, 0.5, 0.5, 0.5),
-                                 0.0, 0.5, 0.5, 0.5, 0.5)
+        self.restim_sender.submit(
+            lambda: self.restim.send_primary(
+                0.5, 0.5, (0.5, 0.5, 0.5, 0.5), 0.0, 0.5, 0.5, 0.5, 0.5),
+            max_age_seconds=2.0)
         with self._four_phase_live_lock:
             order = self.electrode_order.get()
             self._four_phase_live_output = (
                 (0.5, 0.5, 0.5, 0.5), order, order, 0.0, "stopped")
-        self.prostate_restim.send_prostate(0.5, 0.5, 0.0, 0.5, 0.5, 0.5, 0.5)
+        self.prostate_sender.submit(
+            lambda: self.prostate_restim.send_prostate(
+                0.5, 0.5, 0.0, 0.5, 0.5, 0.5, 0.5),
+            max_age_seconds=2.0)
 
     def _reset_four_phase_group_delay(self) -> None:
         self._four_phase_history.clear()
@@ -1915,6 +3378,10 @@ class VectorApp:
 
     def _refresh(self) -> None:
         self._drain_controller_events()
+        self._drain_director_requests()
+        # Keep direct VLC/MPC timeline clocks live even when the timeline window
+        # is closed. request_media_poll() is internally rate-limited and async.
+        self.timeline.request_media_poll()
         if not self._startup_in_progress and self.session_ready_status.get() == "SESSION: READY":
             missing = []
             if self.auto_start_restim.get() and not self.restim.connected:
@@ -1936,6 +3403,7 @@ class VectorApp:
                 self.preset_status.set(
                     f"Active: {self._preset_active} — {label}{suffix}")
         diag = self.engine.diagnostics()
+        self._emit_runtime_health(diag)
         values = {
             "raw_l0": f"{diag.raw_l0:.4f}", "output_l0": f"{diag.output_l0:.4f}",
             "speed": f"{diag.speed_percent:.2f}%", "alpha": f"{diag.alpha:.4f}",
@@ -2087,15 +3555,61 @@ class VectorApp:
         }
         for title, summary in summaries.items():
             self.sections[title].summary.set(summary)
+        if self._timeline_window is not None and self._timeline_window.winfo_exists():
+            self._refresh_timeline_window()
         self.root.after(100, self._refresh)
 
+    @staticmethod
+    def _health_age(value: object) -> str:
+        return "never" if value is None else f"{float(value):.2f}s"
+
+    def _emit_runtime_health(self, diag) -> None:
+        now = time.monotonic()
+        source = self.listener.health()
+        source_age = source.get("last_l0_age")
+        stale = source_age is not None and float(source_age) > 2.0
+        if stale != self._source_was_stale:
+            event = ("STALE INPUT WATCHDOG source=MFP entered stale state"
+                     if stale else "STALE INPUT WATCHDOG source=MFP recovered")
+            print(event, flush=True)
+            self._record_connection_event("MFP", event)
+            self._source_was_stale = stale
+        if now - self._last_health_log_at < 2.0:
+            return
+        output_progress = diag.output_samples > self._last_health_output_count
+        self._last_health_output_count = diag.output_samples
+        clock = self.timeline.snapshot()
+        media_state = clock.get("media_clock_health") or clock.get("clock_source") or "unknown"
+        for label, client, sender in (
+                ("A", self.restim, self.restim_sender),
+                ("B", self.prostate_restim, self.prostate_sender)):
+            socket_health = client.health()
+            lane = sender.health()
+            print(
+                f"RESTIM {label} connected={socket_health['connected']} "
+                f"socket={socket_health['socket_state']} "
+                f"tx_age={self._health_age(socket_health['tx_age'])} "
+                f"cadence={self._health_age(socket_health['send_cadence'])} "
+                f"source_age={self._health_age(source_age)} media_clock={media_state} "
+                f"engine={diag.state} loop_alive={self.engine.loop_alive()} "
+                f"output_progress={output_progress} sender_alive={lane['alive']} "
+                f"queue_pending={lane['pending']} dropped={lane['dropped']} stale={lane['stale']} "
+                f"send_duration={self._health_age(lane['send_duration'])} "
+                f"reconnects={socket_health['reconnect_successes']}/{socket_health['reconnect_attempts']} "
+                f"failures={socket_health['send_failures'] + lane['failures']}", flush=True)
+        self._last_health_log_at = now
+
     def close(self) -> None:
+        self.generated_motion.close()
         self._save_settings()
         self.xinput.close()
         self.engine.close()
         self.listener.stop()
+        self.restim_sender.close()
+        self.prostate_sender.close()
         self.restim.close()
         self.prostate_restim.close()
+        self.director_server.stop()
         self.root.destroy()
 
 

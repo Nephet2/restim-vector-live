@@ -10,6 +10,7 @@ from typing import Callable
 
 from .motion import MotionCalculator, MotionMode, MotionParameters, SegmentState
 from .variety import speed_linked_depth
+from .modifier import ModifierValues, interpolate, transform_segment
 
 
 @dataclass(frozen=True)
@@ -84,6 +85,7 @@ class VectorEngine:
         self._last_input_time = now
         self._last_input_position = 0.5
         self._velocity_history: deque[tuple[float, float]] = deque()
+        self._signal_history: deque[tuple[float, float, float]] = deque()
         self._speed_peak_history: deque[tuple[float, float]] = deque()
         self._stroke_start_time = now
         self._stroke_start_position = 0.5
@@ -133,9 +135,15 @@ class VectorEngine:
         self._sequence = 0
         self._queue: list[tuple[float, int, OutputSample]] = []
         self._state = "Stopped"
+        self._output_enabled = False
         self._diag = Diagnostics()
         self._run = threading.Event()
         self._thread: threading.Thread | None = None
+        # Alpha68: manual deterministic funscript modifier layer.  Neutral by default.
+        self._modifier_start = ModifierValues()
+        self._modifier_target = ModifierValues()
+        self._modifier_transition_started_at = now
+        self._modifier_transition_seconds = 0.2
 
     def configure(self, *, rate_hz: int, lookahead_seconds: float, volume: float,
                   mode: MotionMode, params: MotionParameters,
@@ -212,6 +220,49 @@ class VectorEngine:
                 self._queue.clear()
                 self._state = "Buffering"
 
+
+    def configure_modifier(self, *, enabled: bool, stroke_range: float = 1.0,
+                           position_bias: float = 0.0, smoothing: float = 0.0,
+                           transition_seconds: float = 0.2) -> None:
+        """Set a bounded modifier target; transitions preserve output continuity."""
+        with self._lock:
+            now = self.clock()
+            current = self._modifier_values(now)
+            target = (ModifierValues(stroke_range, position_bias, smoothing).bounded()
+                      if enabled else ModifierValues())
+            self._modifier_start = current
+            self._modifier_target = target
+            self._modifier_transition_started_at = now
+            self._modifier_transition_seconds = min(5.0, max(0.0, float(transition_seconds)))
+
+    def modifier_state(self, now: float | None = None) -> dict:
+        with self._lock:
+            at = self.clock() if now is None else float(now)
+            values = self._modifier_values(at)
+            target = self._modifier_target
+            return {
+                "active": not values.is_neutral(),
+                "target_active": not target.is_neutral(),
+                "stroke_range": round(values.stroke_range, 4),
+                "position_bias": round(values.position_bias, 4),
+                "smoothing": round(values.smoothing, 4),
+                "transition_seconds": round(self._modifier_transition_seconds, 3),
+            }
+
+    def _modifier_values(self, at_time: float) -> ModifierValues:
+        duration = self._modifier_transition_seconds
+        if duration <= 1e-9:
+            return self._modifier_target
+        amount = (float(at_time) - self._modifier_transition_started_at) / duration
+        if amount <= 0.0:
+            return self._modifier_start
+        if amount >= 1.0:
+            return self._modifier_target
+        return interpolate(self._modifier_start, self._modifier_target, amount)
+
+    def _modified_segment(self, segment: SegmentState, at_time: float) -> SegmentState:
+        return transform_segment(segment, self._modifier_values(at_time))
+
     def receive_l0(self, value: float, interval_ms: int = 0, received_at: float | None = None) -> None:
         now = self.clock() if received_at is None else received_at
         value = min(1.0, max(0.0, value))
@@ -235,6 +286,9 @@ class VectorEngine:
             self._velocity_history.append((now, velocity))
             while self._velocity_history and self._velocity_history[0][0] < now - 5.0:
                 self._velocity_history.popleft()
+            self._signal_history.append((now, value, velocity))
+            while self._signal_history and self._signal_history[0][0] < now - 10.0:
+                self._signal_history.popleft()
             rolling_velocity = sum(item[1] for item in self._velocity_history) / len(self._velocity_history)
             self._speed_peak_history.append((now, rolling_velocity))
             while self._speed_peak_history and self._speed_peak_history[0][0] < now - 30.0:
@@ -292,14 +346,16 @@ class VectorEngine:
                     and stroke.start_time <= sample.calculated_at <= stroke.end_time):
                 alpha, beta, position, speed = self.calculator.calculate(
                     MotionMode.RESTIM_ORIGINAL,
-                    self._jitter_segment(stroke, sample.variation_depth),
+                    self._jitter_segment(
+                        self._modified_segment(stroke, sample.calculated_at), sample.variation_depth),
                     sample.calculated_at, self.params
                 )
                 sample = replace(sample, output_l0=position, speed_percent=speed,
                                  alpha=alpha, beta=beta)
             if stroke.start_time <= sample.calculated_at <= stroke.end_time:
                 pa, pb = self._calculate_prostate(
-                    self._jitter_segment(stroke, sample.variation_depth),
+                    self._jitter_segment(
+                        self._modified_segment(stroke, sample.calculated_at), sample.variation_depth),
                     sample.calculated_at)
                 sample = replace(sample, alpha_prostate=pa, beta_prostate=pb)
             rewritten.append((due_at, sequence, sample))
@@ -343,31 +399,209 @@ class VectorEngine:
     def resume(self) -> None:
         with self._lock:
             self._queue.clear()
+            self._output_enabled = True
             self._state = "Buffering"
+            self._diag = replace(self._diag, state=self._state, buffer_fill=0)
 
     def neutral(self) -> None:
         with self._lock:
             self._queue.clear()
+            self._output_enabled = True
             self._state = "Neutral"
+            self._diag = replace(self._diag, state=self._state, buffer_fill=0)
 
     def stop(self) -> None:
         with self._lock:
+            # Stop is a latched output gate.  Incoming MFP samples continue to be
+            # observed for diagnostics/Director visibility, but they cannot restart
+            # output until an explicit resume().
             self._queue.clear()
+            self._output_enabled = False
             self._state = "Stopped"
+            self._diag = replace(self._diag, state=self._state, buffer_fill=0)
+
+    def control_state(self) -> dict:
+        with self._lock:
+            return {
+                "engine_state": self._state,
+                "output_enabled": bool(self._output_enabled),
+                "buffer_fill": len(self._queue),
+            }
 
     def diagnostics(self) -> Diagnostics:
         with self._lock:
-            return replace(self._diag)
+            # Keep control state authoritative even between scheduler ticks.
+            return replace(self._diag, state=self._state, buffer_fill=len(self._queue))
+
+    def loop_alive(self) -> bool:
+        return bool(self._run.is_set() and self._thread and self._thread.is_alive())
+
+    def director_signal_snapshot(self, now: float | None = None) -> dict:
+        """Read-only semantic summary of the recently received L0 signal.
+
+        The observer deliberately reports coarse, deterministic descriptors rather
+        than exposing raw T-code history to an AI client.  Energy bands are relative
+        to Vector's recent-session speed normalisation; they are useful Director
+        semantics, not a claim about absolute physical intensity.
+        """
+        now = self.clock() if now is None else float(now)
+        with self._lock:
+            diag = replace(self._diag)
+            age = max(0.0, now - self._last_input_time)
+            history = list(self._signal_history)
+            strokes = list(self._completed_strokes)
+
+        recent = [x for x in history if x[0] >= now - 2.0]
+        if not recent:
+            recent = history[-1:]
+        positions = [x[1] for x in recent]
+        local_min = min(positions) if positions else float(diag.raw_l0)
+        local_max = max(positions) if positions else float(diag.raw_l0)
+        amplitude = max(0.0, local_max - local_min)
+
+        direction = "steady"
+        if len(recent) >= 2:
+            delta = recent[-1][1] - recent[-2][1]
+            if delta > 0.0005:
+                direction = "rising"
+            elif delta < -0.0005:
+                direction = "falling"
+
+        recent_strokes = [st for st in strokes if st.end_time >= now - 5.0]
+        reversal_rate = len(recent_strokes) / 5.0
+        stroke_amplitudes = [abs(st.end_position - st.start_position) for st in recent_strokes]
+        mean_stroke_amplitude = (sum(stroke_amplitudes) / len(stroke_amplitudes)
+                                 if stroke_amplitudes else amplitude)
+
+        active = age <= 0.75
+        speed = float(diag.speed_percent) if active else 0.0
+        # Blend relative speed with recent excursion so small, fast tremors and broad
+        # slow sweeps do not collapse to the same semantic label.
+        energy_score = min(100.0, max(0.0, speed * 0.70 + mean_stroke_amplitude * 100.0 * 0.30))
+        if not active:
+            activity = "lull"
+            energy_band = "relaxing"
+            energy_score = 0.0
+        else:
+            activity = "active" if (speed >= 2.0 or amplitude >= 0.01) else "hold"
+            if energy_score < 25.0:
+                energy_band = "relaxing"
+            elif energy_score < 50.0:
+                energy_band = "moderate"
+            elif energy_score < 75.0:
+                energy_band = "challenging"
+            else:
+                energy_band = "testing"
+
+        center = (local_min + local_max) / 2.0
+        if center < 0.34:
+            focus_region = "lower"
+        elif center > 0.66:
+            focus_region = "upper"
+        else:
+            focus_region = "middle"
+
+        return {
+            "source": "live_l0",
+            "activity": activity,
+            "input_age_seconds": round(age, 3),
+            "position": round(float(diag.raw_l0), 4),
+            "direction": direction,
+            "speed_percent": round(speed, 2),
+            "local_range": [round(local_min, 4), round(local_max, 4)],
+            "local_amplitude": round(amplitude, 4),
+            "mean_stroke_amplitude": round(mean_stroke_amplitude, 4),
+            "reversals_per_second": round(reversal_rate, 3),
+            "focus_region": focus_region,
+            "energy_score": round(energy_score, 1),
+            "energy_band": energy_band,
+            "energy_note": "relative live-script energy; not absolute physical output intensity",
+        }
+
+    def director_forecast(self, now: float | None = None) -> dict:
+        """Compact read-only forecast from samples already in the deterministic queue.
+
+        This does not calculate new motion or mutate engine state.  It only summarizes
+        samples Vector has already calculated and scheduled for future release.
+        """
+        now = self.clock() if now is None else float(now)
+        with self._lock:
+            samples = [item[2] for item in sorted(self._queue) if item[0] > now]
+            lookahead = float(self.lookahead_seconds)
+
+        if not samples:
+            return {
+                "horizon_seconds": round(lookahead, 3),
+                "queue_samples": 0,
+                "direction": "unknown",
+                "speed_trend": "unknown",
+                "projected_speed_percent": 0.0,
+                "next_reversal_seconds": None,
+                "endpoint_approach": None,
+            }
+
+        # Use due-time order: this is what the user will actually experience next.
+        positions = [float(x.output_l0) for x in samples]
+        speeds = [float(x.speed_percent) for x in samples]
+        deltas = [b - a for a, b in zip(positions, positions[1:])]
+
+        def sign(v: float, eps: float = 1e-4) -> int:
+            return 1 if v > eps else (-1 if v < -eps else 0)
+
+        first_dir = 0
+        for d in deltas:
+            first_dir = sign(d)
+            if first_dir:
+                break
+        direction = "rising" if first_dir > 0 else ("falling" if first_dir < 0 else "steady")
+
+        next_reversal = None
+        active_dir = first_dir
+        if active_dir:
+            for idx, d in enumerate(deltas, start=1):
+                sd = sign(d)
+                if sd and sd != active_dir:
+                    next_reversal = max(0.0, samples[idx].due_at - now)
+                    break
+
+        n = max(1, min(12, len(speeds) // 3 or 1))
+        early = sum(speeds[:n]) / len(speeds[:n])
+        late = sum(speeds[-n:]) / len(speeds[-n:])
+        if late > early + 5.0:
+            speed_trend = "increasing"
+        elif late < early - 5.0:
+            speed_trend = "decreasing"
+        else:
+            speed_trend = "steady"
+
+        endpoint = None
+        # Only claim an approach when the queued path actually reaches near an endpoint.
+        if direction == "rising" and max(positions) >= 0.90:
+            endpoint = "top"
+        elif direction == "falling" and min(positions) <= 0.10:
+            endpoint = "bottom"
+
+        horizon = max(0.0, samples[-1].due_at - now)
+        return {
+            "horizon_seconds": round(min(lookahead, horizon), 3),
+            "queue_samples": len(samples),
+            "direction": direction,
+            "speed_trend": speed_trend,
+            "projected_speed_percent": round(sum(speeds) / len(speeds), 2),
+            "next_reversal_seconds": (None if next_reversal is None else round(next_reversal, 3)),
+            "endpoint_approach": endpoint,
+        }
 
     def _calculate_and_queue(self, scheduled_at: float) -> None:
         with self._lock:
-            if self._state not in ("Buffering", "Running"):
+            if not self._output_enabled or self._state not in ("Buffering", "Running"):
                 return
             calculation_segment = (self._stroke_for_time(scheduled_at)
                                    if self.mode == MotionMode.RESTIM_ORIGINAL
                                    else self._segment)
             variation_depth = self._update_variation_depth(
                 scheduled_at, calculation_segment.speed_percent)
+            calculation_segment = self._modified_segment(calculation_segment, scheduled_at)
             calculation_segment = self._jitter_segment(calculation_segment, variation_depth)
             alpha, beta, output_l0, speed = self.calculator.calculate(
                 self.mode, calculation_segment, scheduled_at, self.params,
@@ -378,7 +612,7 @@ class VectorEngine:
             pulse_rise_time = self._calculate_pulse_rise_time(speed)
             pulse_width = self._calculate_pulse_width(scheduled_at, speed, output_l0)
             prostate_segment = self._jitter_segment(
-                self._stroke_for_time(scheduled_at), variation_depth)
+                self._modified_segment(self._stroke_for_time(scheduled_at), scheduled_at), variation_depth)
             alpha_prostate, beta_prostate = self._calculate_prostate(
                 prostate_segment, scheduled_at)
             volume_prostate = self._calculate_prostate_volume(scheduled_at, speed)
@@ -434,7 +668,7 @@ class VectorEngine:
         with self._lock:
             while self._queue and self._queue[0][0] <= now:
                 due.append(heapq.heappop(self._queue)[2])
-            if due and self._state == "Buffering":
+            if due and self._output_enabled and self._state == "Buffering":
                 self._state = "Running"
         for sample in due:
             self.send_sample(sample)

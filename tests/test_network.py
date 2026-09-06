@@ -5,10 +5,89 @@ import threading
 import time
 import unittest
 
-from vector1a.network import MFPListener, ReStimWebSocketClient
+from vector1a.engine import VectorEngine
+from vector1a.network import LatestFrameDispatcher, MFPListener, ReStimWebSocketClient
 
 
 class NetworkTests(unittest.TestCase):
+    def test_blocked_restim_lane_cannot_starve_vector_engine(self):
+        entered = threading.Event()
+        release = threading.Event()
+        statuses = []
+        lane = LatestFrameDispatcher("Primary", statuses.append)
+        output_count = []
+
+        def blocked_send():
+            entered.set()
+            release.wait(1.0)
+            return True
+
+        def dispatch(sample):
+            output_count.append(sample.sequence)
+            lane.submit(blocked_send)
+
+        engine = VectorEngine(dispatch, rate_hz=50, lookahead_seconds=.02)
+        engine.resume()
+        engine.receive_l0(.2)
+        engine.start()
+        try:
+            self.assertTrue(entered.wait(.5))
+            before = len(output_count)
+            time.sleep(.12)
+            self.assertTrue(engine.loop_alive())
+            self.assertGreater(len(output_count), before + 2)
+            self.assertGreater(lane.health()["dropped"], 0)
+        finally:
+            release.set()
+            engine.close()
+            lane.close()
+
+    def test_dual_lanes_are_independent_and_latest_frame_wins(self):
+        blocked = threading.Event()
+        release = threading.Event()
+        primary_seen = []
+        prostate_seen = []
+        primary = LatestFrameDispatcher("Primary", lambda _: None)
+        prostate = LatestFrameDispatcher("Prostate", lambda _: None)
+        try:
+            primary.submit(lambda: (blocked.set(), release.wait(.5), primary_seen.append(1), True)[-1])
+            self.assertTrue(blocked.wait(.3))
+            primary.submit(lambda: (primary_seen.append(2), True)[-1])
+            primary.submit(lambda: (primary_seen.append(3), True)[-1])
+            prostate.submit(lambda: (prostate_seen.append(1), True)[-1])
+            deadline = time.monotonic() + .5
+            while not prostate_seen and time.monotonic() < deadline:
+                time.sleep(.005)
+            self.assertEqual(prostate_seen, [1])
+            release.set()
+            deadline = time.monotonic() + .5
+            while primary.health()["completed"] < 2 and time.monotonic() < deadline:
+                time.sleep(.005)
+            self.assertEqual(primary_seen, [1, 3])
+            self.assertGreaterEqual(primary.health()["dropped"], 1)
+        finally:
+            release.set()
+            primary.close()
+            prostate.close()
+
+    def test_stale_frame_is_discarded_instead_of_replayed(self):
+        ran = []
+        lane = LatestFrameDispatcher("Primary", lambda _: None, max_age_seconds=.02)
+        blocker = threading.Event()
+        lane.submit(lambda: blocker.wait(.1) or True)
+        time.sleep(.01)
+        lane.submit(lambda: (ran.append("stale"), True)[-1], max_age_seconds=.02)
+        time.sleep(.04)
+        blocker.set()
+        deadline = time.monotonic() + .3
+        while lane.health()["pending"] and time.monotonic() < deadline:
+            time.sleep(.005)
+        try:
+            self.assertEqual(ran, [])
+            self.assertGreaterEqual(lane.health()["stale"], 1)
+        finally:
+            lane.close()
+
     def test_dependency_free_websocket_handshake_and_masked_text(self):
         server = socket.socket(); server.bind(("127.0.0.1", 0)); server.listen(1)
         port = server.getsockname()[1]; received = []
@@ -173,6 +252,9 @@ class NetworkTests(unittest.TestCase):
         try:
             client.connect("127.0.0.1", port)
             self.assertTrue(reconnected.wait(3.0))
+            health = client.health()
+            self.assertGreaterEqual(health["reconnect_attempts"], 1)
+            self.assertGreaterEqual(health["reconnect_successes"], 1)
         finally:
             client.close()
 
