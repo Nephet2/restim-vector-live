@@ -6,11 +6,12 @@ ordinary positional `L0` stream, Vector remains the deterministic motion generat
 MFP supplies a clearly authored ReStim axis set, Vector can automatically pass those axes
 through on the same delayed timeline and generate only the missing axes.
 
-Current development build: **1.6.0-alpha77**.
+Current development build: **1.6.0-alpha78**.
 
 **Upgrading from alpha49?** Read [Changes since alpha49](RELEASE_NOTES_1.6.0-alpha76.md)
 for the accumulated features, compatibility notes and new MFP WebSocket setup.
-For the curated custom-event addition, see [Alpha77](RELEASE_NOTES_1.6.0-alpha77.md).
+For the latest transition refinements, see [Alpha78](RELEASE_NOTES_1.6.0-alpha78.md).
+The curated custom-event addition is documented in [Alpha77](RELEASE_NOTES_1.6.0-alpha77.md).
 
 > [!CAUTION]
 > Commission with ReStim's graphical display and stimulation hardware

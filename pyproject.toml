@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vector1a"
-version = "1.6.0a77"
+version = "1.6.0a78"
 description = "Live MultiFunPlayer L0 to dual-ReStim motion bridge"
 readme = "README.md"
 requires-python = ">=3.11"
