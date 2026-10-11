@@ -366,6 +366,27 @@ class QueueTests(unittest.TestCase):
             self.assertAlmostEqual(min(alpha), 0.0)
             self.assertAlmostEqual(max(alpha), 1.0)
 
+    def test_known_generated_bounds_keep_prostate_path_smooth_through_reversals(self):
+        sent = []
+        now = [0.0]
+        engine = VectorEngine(sent.append, rate_hz=50, lookahead_seconds=1.0,
+                              clock=lambda: now[0])
+        engine.resume()
+        dt = 1.0 / 50.0
+        for index in range(1, 601):
+            at = index * dt
+            phase = at / 4.8
+            value = 0.35 + 0.50 * (1.0 - math.cos(2.0 * math.pi * phase)) * 0.5
+            now[0] = at
+            engine.receive_l0(value, 20, at, stroke_bounds=(0.35, 0.85))
+            engine.step(at, release_at=at)
+        now[0] = 14.0
+        engine._release_due(now[0])
+        jumps = [max(abs(current.alpha_prostate - previous.alpha_prostate),
+                     abs(current.beta_prostate - previous.beta_prostate))
+                 for previous, current in zip(sent, sent[1:])]
+        self.assertLess(max(jumps), 0.01)
+
     def test_prostate_volume_uses_rfp_multiplier_and_rest_level(self):
         engine = VectorEngine(lambda sample: None, volume=0.7, clock=lambda: 0.0)
         engine._last_input_time = 0.0

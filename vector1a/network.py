@@ -413,6 +413,9 @@ class ReStimClient(_ReconnectClient):
         for axis, value in (("C0", frequency), ("P0", pulse_frequency),
                             ("P3", pulse_rise_time), ("P1", pulse_width)):
             if value is not None: commands.append(format_command(axis, value))
+        if pressure is not None and pressure.enabled and 'V0' in suppressed:
+            neutral += ' V00000'
+
         with self._lock:
             if not self._ensure_connected(): return
             try: self._socket.sendall((" ".join(commands) + "\n").encode("ascii"))
@@ -449,6 +452,15 @@ class ReStimWebSocketClient(_ReconnectClient):
         return bytes(header) + mask + bytes(byte ^ mask[i % 4] for i, byte in enumerate(payload))
 
     def _send_message(self, message: str, neutral: str) -> bool:
+        pressure = getattr(self, 'pressure_control', None)
+        original_volume = next((token for token in message.split() if token[:2].upper() == 'V0'), None)
+        suppressed = getattr(self, "suppressed_axes", frozenset())
+        if suppressed:
+            message = " ".join(token for token in message.split()
+                               if token[:2].upper() not in suppressed)
+            neutral = " ".join(token for token in neutral.split()
+                               if token[:2].upper() not in suppressed)
+
         with self._lock:
             if not self._ensure_connected():
                 return False
@@ -457,6 +469,10 @@ class ReStimWebSocketClient(_ReconnectClient):
                     self._socket.sendall(self._frame(neutral))
                     self._needs_neutral = False
                     self.status("Recovered safely; output resumed")
+                if pressure is not None and pressure.enabled:
+                    if 'V0' in suppressed and original_volume:
+                        message += ' ' + original_volume
+                    message = pressure.tcode(message)
                 self._socket.sendall(self._frame(message))
                 self._sent()
                 return True

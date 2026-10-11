@@ -73,6 +73,22 @@ class GeneratedMotionSource:
         with self._lock:
             return self._active
 
+    def stroke_bounds(self, at_time: float | None = None) -> tuple[float, float] | None:
+        """Return the effective bounds of the current generated stroke."""
+        now = time.monotonic() if at_time is None else float(at_time)
+        with self._lock:
+            if not self._active:
+                return None
+            if self._held:
+                return self._last_value, self._last_value
+            plan = self._plan
+            elapsed = max(0.0, now - self._plan_started_at)
+            blend = min(1.0, elapsed / plan.transition_seconds)
+            blend = blend * blend * (3.0 - 2.0 * blend)
+            low = self._transition_from + (plan.minimum - self._transition_from) * blend
+            high = self._transition_from + (plan.maximum - self._transition_from) * blend
+        return min(low, high), max(low, high)
+
     def apply(self, plan: MotionPlan, starting_value: float) -> dict:
         now = time.monotonic()
         with self._lock:

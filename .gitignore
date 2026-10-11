@@ -8,3 +8,9 @@ build/
 .idea/
 .vscode/
 settings.json
+
+profile/
+backups/
+.codex-backups/
+settings-howl.json
+vector1a/civet-pressure.json

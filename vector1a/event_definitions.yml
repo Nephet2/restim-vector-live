@@ -1,0 +1,2749 @@
+# This file defines the building blocks of custom events.
+# Each event is a sequence of fundamental operations.
+#
+# Allowed parameter enums:
+#
+# operation:
+#   - apply_linear_change   — ramps a parameter linearly from start_value to end_value
+#   - apply_modulation      — applies oscillating modulation to an axis
+#
+# axis:
+#   - pulse_frequency       — pulse rate in Hz (normalized by normalization.pulse_frequency.max)
+#   - pulse_width           — pulse width as percentage (normalized by normalization.pulse_width.max)
+#   - frequency             — carrier frequency in Hz (normalized by normalization.frequency.max)
+#   - volume                — main channel output level (0.0–1.0)
+#   - volume-prostate       — prostate channel output level (0.0–1.0)
+#   - alpha                 — alpha channel modulation parameter
+#   - beta                  — beta channel modulation parameter
+#   - sensor_suppression    — Restim S1 mute for sensors (0–100; 100 = fully suppressed)
+#   Multiple axes can be targeted simultaneously using comma separation (e.g. "volume,volume-prostate")
+#
+# waveform (apply_modulation only):
+#   - sin                   — smooth sinusoidal oscillation
+#   - square                — abrupt on/off switching; supports optional duty_cycle (0.0–1.0)
+#
+# mode:
+#   - additive              — adds the effect on top of the current axis value
+#   - overwrite             — replaces the current axis value entirely
+
+# Axis normalization settings
+# These define the maximum values used to normalize raw parameters to 0.0-1.0 range
+normalization:
+  pulse_frequency:
+    max: 120.0          # Maximum pulse frequency in Hz
+    unit: "Hz"
+  pulse_width:
+    max: 100.0          # Maximum pulse width (percentage)
+    unit: "%"
+  frequency:
+    max: 1200.0          # Maximum frequency (degrees for restim)
+    unit: "Hz"
+  volume:
+    max: 1.0            # Volume already normalized (0.0-1.0)
+  sensor_suppression:
+    max: 100.0          # Restim S1 percent (100 = fully suppressed)
+    unit: "%"
+    unit: "normalized"
+
+# Event groups for organization in the UI
+# Each group can contain multiple event definitions with matching prefix
+groups:
+  - name: "General"
+    prefix: ""
+    description: "Mostly work in progress"
+
+  - name: "MCB (credit: AquariumParrot)"
+    prefix: "mcb_"
+    description: "Events reverse-engineered from the Mistress and Control Box by AquariumParrot"
+
+  - name: "Clutch (credit: AquariumParrot)"
+    prefix: "clutch_"
+    description: "Events reverse-engineered from the Clutch by AquariumParrot"
+    
+  - name: "Test events - use with care"
+    prefix: "test_"
+    description: "These events are for testing features of the app"
+
+  - name: "CH events (for colored bars)"
+    prefix: "CH_"
+    description: "Events to be added to the ch for their colored bars"
+
+definitions:
+  cum:
+    default_params:
+      duration_ms: 15000
+      buzz_freq: 1.5
+      buzz_intensity: 0.1
+      volume_boost: 0.2
+      ramp_up_ms: 250
+    steps:
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: 90
+          end_value: 80
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_modulation
+        axis: volume,volume-prostate
+        params:
+          waveform: sin
+          frequency: $buzz_freq
+          amplitude: $buzz_intensity
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          max_level_offset: $volume_boost
+          mode: additive
+      - operation: apply_linear_change
+        axis: pulse_width
+        params:
+          start_value: -50
+          end_value: 50
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_linear_change
+        axis: sensor_suppression
+        params:
+          start_value: 100
+          end_value: 100
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: overwrite
+
+  stay:
+    default_params:
+      duration_ms: 15000
+      buzz_freq: 15
+      buzz_intensity: 0.05
+      volume_boost: 0.1
+      ramp_up_ms: 250
+    steps:
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: 80
+          end_value: 80
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_modulation
+        axis: volume,volume-prostate
+        params:
+          waveform: sin
+          frequency: $buzz_freq
+          amplitude: $buzz_intensity
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          max_level_offset: $volume_boost
+          mode: additive
+      - operation: apply_linear_change
+        axis: pulse_width
+        params:
+          start_value: -80
+          end_value: -90
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+
+  edge:
+    default_params:
+      duration_ms: 15000
+      buzz_freq: 10
+      buzz_intensity: 0.07
+      volume_boost: 0.15
+      ramp_up_ms: 500
+    steps:
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: 40
+          end_value: 50
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_modulation
+        axis: volume,volume-prostate
+        params:
+          waveform: sin
+          frequency: $buzz_freq
+          amplitude: $buzz_intensity
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          max_level_offset: $volume_boost
+          mode: additive
+      - operation: apply_linear_change
+        axis: pulse_width
+        params:
+          start_value: -40
+          end_value: -30
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_linear_change
+        axis: sensor_suppression
+        params:
+          start_value: 50
+          end_value: 50
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: overwrite
+  lube:
+    default_params:
+      duration_ms: 15000
+      volume_boost: -0.1
+      stroke_freq: 0.5
+      stroke_intensity: 0.5
+      stroke_offset: 0
+      ramp_up_ms: 250
+    steps:
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: 30
+          end_value: 30
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_modulation
+        axis: alpha
+        params:
+          waveform: sin
+          frequency: $stroke_freq
+          amplitude: $stroke_intensity
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          max_level_offset: $stroke_offset
+          mode: additive
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        params:
+          start_value: $volume_boost
+          end_value: $volume_boost
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_linear_change
+        axis: pulse_width
+        params:
+          start_value: -30
+          end_value: -30
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+
+  slow-stroke:
+    default_params:
+      duration_ms: 15000
+      volume_boost: -0.1
+      stroke_freq: 0.25
+      stroke_intensity: 0.5
+      stroke_offset: -0.1
+      ramp_up_ms: 250
+    steps:
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: -10
+          end_value: -10
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_linear_change
+        axis: alpha
+        params:
+          start_value: $stroke_offset
+          end_value: $stroke_offset
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_modulation
+        axis: alpha
+        params:
+          waveform: sin
+          frequency: $stroke_freq
+          amplitude: $stroke_intensity
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        params:
+          start_value: $volume_boost
+          end_value: $volume_boost
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_linear_change
+        axis: pulse_width
+        params:
+          start_value: -30
+          end_value: -30
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+
+  slow:
+    default_params:
+      duration_ms: 15000
+      volume_boost: -0.1
+      stroke_offset: -0.1
+      ramp_up_ms: 250
+    steps:
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: -10
+          end_value: -10
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        params:
+          start_value: $volume_boost
+          end_value: $volume_boost
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_linear_change
+        axis: pulse_width
+        params:
+          start_value: -30
+          end_value: -30
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+
+  medium-stroke:
+    default_params:
+      duration_ms: 15000
+      stroke_freq: 1
+      stroke_intensity: 0.5
+      stroke_offset: 0
+      volume_boost: 0.00
+      ramp_up_ms: 250
+
+    steps:
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        params:
+          start_value: $volume_boost
+          end_value: $volume_boost
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: -10
+          end_value: -10
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_modulation
+        axis: alpha
+        params:
+          waveform: sin
+          frequency: $stroke_freq
+          amplitude: $stroke_intensity
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          max_level_offset: $stroke_offset
+          mode: additive
+      - operation: apply_linear_change
+        axis: pulse_width
+        params:
+          start_value: -40
+          end_value: -30
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+
+  fast-stroke:
+    default_params:
+      duration_ms: 15000
+      stroke_freq: 2
+      stroke_intensity: 0.5
+      stroke_offset: 0
+      volume_boost: 0.03
+      ramp_up_ms: 2500
+    steps:
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        params:
+          start_value: $volume_boost
+          end_value: $volume_boost
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: 10
+          end_value: 10
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_modulation
+        axis: alpha
+        params:
+          waveform: sin
+          frequency: $stroke_freq
+          amplitude: $stroke_intensity
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          max_level_offset: $stroke_offset
+          mode: additive
+      - operation: apply_linear_change
+        axis: pulse_width
+        params:
+          start_value: -20
+          end_value: -30
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+
+  fast:
+    default_params:
+      duration_ms: 15000
+      volume_boost: 0.03
+      ramp_up_ms: 2500
+
+    steps:
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        params:
+          start_value: $volume_boost
+          end_value: $volume_boost
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: 10
+          end_value: 10
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_linear_change
+        axis: pulse_width
+        params:
+          start_value: -20
+          end_value: -30
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+
+  ruin:
+    default_params:
+      duration_ms: 30000
+      ramp_in_ms: 10000
+    steps:
+      - operation: apply_linear_change
+        axis: volume
+        params:
+          start_value: 0
+          end_value: 0
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_in_ms
+          ramp_out_ms: 500
+          mode: overwrite
+      - operation: apply_linear_change
+        axis: sensor_suppression
+        params:
+          start_value: 100
+          end_value: 100
+          duration_ms: $duration_ms
+          ramp_in_ms: 0
+          mode: overwrite
+
+  stop:
+    default_params:
+      duration_ms: 30000
+      ramp_in_ms: 500
+      ramp_out_ms: 1000
+    steps:
+      - operation: apply_linear_change
+        axis: volume
+        params:
+          start_value: 0.05
+          end_value: 0.1
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_in_ms
+          ramp_out_ms: $ramp_out_ms
+          mode: overwrite
+      - operation: apply_linear_change
+        axis: volume-prostate
+        params:
+          start_value: 0.1
+          end_value: 0.2
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_in_ms
+          ramp_out_ms: $ramp_out_ms
+          mode: overwrite
+
+  rest-stroke:
+    default_params:
+      duration_ms: 15000
+      volume_boost: -0.4
+      stroke_freq: 0.25
+      stroke_intensity: 0.5
+      ramp_up_ms: 250
+    steps:
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: -10
+          end_value: -10
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_modulation
+        axis: alpha
+        params:
+          waveform: sin
+          frequency: $stroke_freq
+          amplitude: $stroke_intensity
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        params:
+          start_value: $volume_boost
+          end_value: $volume_boost
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_linear_change
+        axis: pulse_width
+        params:
+          start_value: -30
+          end_value: -30
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+
+  rest:
+    default_params:
+      duration_ms: 15000
+      volume_boost: -0.4
+      ramp_up_ms: 250
+    steps:
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: -10
+          end_value: -10
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        params:
+          start_value: $volume_boost
+          end_value: $volume_boost
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_linear_change
+        axis: pulse_width
+        params:
+          start_value: -30
+          end_value: -30
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+
+  pulse_freq_shift:
+    default_params:
+      duration_ms: 5000
+      freq_shift_start: -50         # Shift carrier down by 50 Hz
+      freq_shift_end: -50         # Shift carrier down by 50 Hz
+      ramp_ms: 250
+    steps:
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: $freq_shift_start
+          end_value: $freq_shift_end
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+  volume_shift:
+    default_params:
+      duration_ms: 5000
+      shift_start: .05
+      shift_end: .05       # Shift carrier down by 50 Hz
+      ramp_ms: 250
+    steps:
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        params:
+          start_value: $shift_start
+          end_value: $shift_end
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+  pulse_width_shift:
+    default_params:
+      duration_ms: 5000
+      shift_start: 10       
+      shift_end: 10        
+      ramp_ms: 250
+    steps:
+      - operation: apply_linear_change
+        axis: pulse_width
+        params:
+          start_value: $shift_start
+          end_value: $shift_end
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+  tranquil:
+    default_params:
+      duration_ms: 20000
+      osc_freq: 25
+      osc_amplitude: 0.3
+      max_volume: -0.01
+
+    steps:
+      - operation: apply_modulation
+        axis: volume,volume-prostate
+        params:
+          waveform: sin
+          frequency: $osc_freq
+          amplitude: $osc_amplitude
+          max_level_offset: $max_volume
+          duration_ms: $duration_ms
+          ramp_in_ms: 1000
+          ramp_out_ms: 1000
+          mode: additive
+
+  CH_slow-tease:
+    default_params:
+      duration_ms: 15000
+      volume_boost: -0.01
+      ramp_up_ms: 250
+    steps:
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: 5
+          end_value: 5
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        params:
+          start_value: $volume_boost
+          end_value: $volume_boost
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_linear_change
+        axis: pulse_width
+        params:
+          start_value: -30
+          end_value: -30
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+
+  CH_normal:
+    default_params:
+      duration_ms: 15000
+    steps:
+
+  CH_edge:
+    default_params:
+      duration_ms: 15000
+      volume_boost: 0.01
+      ramp_up_ms: 250
+    steps:
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: 5
+          end_value: 35
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        params:
+          start_value: 0
+          end_value: $volume_boost
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_linear_change
+        axis: pulse_width
+        params:
+          start_value: 10
+          end_value: 30
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_modulation
+        axis: pulse_width
+        params:
+          waveform: square
+          frequency: 3
+          amplitude: 10
+          duty_cycle: 0.3
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_linear_change
+        axis: sensor_suppression
+        params:
+          start_value: 50
+          end_value: 50
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: overwrite
+
+  CH_cum_tease:
+    default_params:
+      duration_ms: 15000
+      volume_boost: 0.05
+      ramp_up_ms: 250
+    steps:
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: 15
+          end_value: 45
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        params:
+          start_value: 0
+          end_value: $volume_boost
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_linear_change
+        axis: pulse_width
+        params:
+          start_value: 15
+          end_value: 40
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_modulation
+        axis: pulse_width
+        params:
+          waveform: square
+          frequency: 6
+          amplitude: 30
+          duty_cycle: 0.5
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: additive
+      - operation: apply_linear_change
+        axis: sensor_suppression
+        params:
+          start_value: 100
+          end_value: 100
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_up_ms
+          mode: overwrite
+
+  # Event Definitions from AquariumParrot's MCB 
+  # Based on SuperCollider scripts 
+  # === SUBMIT EFFECT ===
+  # Brief pulse frequency drop to 20 Hz with wide pulse
+
+  test_slaps:
+    default_params:
+      duration_ms: 3000
+      max_volume_increase: 0.2
+      prostate_volume_increase: 0.1
+      amplitude: 0.6
+      frequency: 1
+      ramp_ms: 500
+      
+    steps:
+      - operation: apply_modulation
+        axis: volume
+        params:
+          waveform: square
+          duty_cycle: 0.05
+          frequency: $frequency
+          amplitude: $amplitude
+          max_level_offset: $max_volume_increase
+          duration_ms: $duration_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+            
+      - operation: apply_linear_change
+        axis: volume-prostate
+        params:
+          start_value: $prostate_volume_increase
+          end_value: $prostate_volume_increase
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+  mcb_submit:
+    default_params:
+      duration_ms: 5000
+      pulse_rate: 21           # 20 Hz in SC, avoid aliasing
+      pulse_width: 75          # 0.5 in SC = 50%
+      ramp_ms: 250
+      volume_boost: 0.01
+
+    steps:
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: $pulse_rate
+          end_value: $pulse_rate
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: pulse_width
+        params:
+          start_value: $pulse_width
+          end_value: $pulse_width
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+          
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        params:
+          start_value: $volume_boost
+          end_value: $volume_boost
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          mode: additive
+
+  # === GOOD BOY ===
+  # SC ~goodBoy: pulse 27 Hz / width 0.5 for 5s (sibling of ~submit)
+
+  mcb_goodboy:
+    default_params:
+      duration_ms: 5000
+      pulse_rate: 27           # 27 Hz in SC
+      pulse_width: 50          # 0.5 in SC = 50%
+      ramp_ms: 250
+      volume_boost: 0.01
+
+    steps:
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: $pulse_rate
+          end_value: $pulse_rate
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: pulse_width
+        params:
+          start_value: $pulse_width
+          end_value: $pulse_width
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        params:
+          start_value: $volume_boost
+          end_value: $volume_boost
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          mode: additive
+
+  # === EDGE EFFECT ===
+  # Sinusoidal volume modulation with high pulse frequency
+
+  mcb_edge:
+    default_params:
+      duration_ms: 18000       # 6s attack + 12s sustain
+      pulse_rate: 100          # Increase pulse frequency
+      mod_freq: 9              # 8 Hz in SC, avoid aliasing
+      mod_amplitude: 0.35      # Amplitude of sine modulation
+      intensity: 0.02         # Bias (sustain level)
+      ramp_ms: 6000
+
+    steps:
+      # Set pulse frequency
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: $pulse_rate
+          end_value: $pulse_rate
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+      # Apply sinusoidal volume modulation
+      - operation: apply_modulation
+        axis: volume,volume-prostate
+        params:
+          waveform: sin
+          frequency: $mod_freq
+          amplitude: $mod_amplitude
+          max_level_offset: $intensity
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: sensor_suppression
+        params:
+          start_value: 50
+          end_value: 50
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+  # === EDGE CE (Cock Enslavement) ===
+  # Intense edging with dual modulation on alpha and beta
+
+  mcb_edge_ce:
+    default_params:
+      volume: 0.05
+      duration_ms: 15000
+      pulse_rate: 100          # Very high pulse frequency
+      alpha_freq: 7            # Avoid aliasing (SC has varying trill)
+      alpha_amplitude: 0.85    # Strong alpha modulation
+      beta_freq: 4             # Lower frequency for beta
+      beta_amplitude: 0.8      # Strong beta modulation
+      beta_phase: 90           # pi/2 phase shift in degrees
+      ramp_ms: 1500
+
+    steps:
+      # Apply sinusoidal volume modulation
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        params:
+          start_value: $volume
+          end_value: $volume
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+      # Set very high pulse frequency
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: $pulse_rate
+          end_value: $pulse_rate
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+      # Alpha modulation (uses edgeCtrl with trill in SC)
+      - operation: apply_modulation
+        axis: alpha
+        params:
+          waveform: sin
+          frequency: $alpha_freq
+          amplitude: $alpha_amplitude
+          max_level_offset: 0
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: additive
+      # Beta modulation 
+      - operation: apply_modulation
+        axis: beta
+        params:
+          waveform: sin
+          frequency: $beta_freq
+          amplitude: $beta_amplitude
+          max_level_offset: 0
+          phase: $beta_phase
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: sensor_suppression
+        params:
+          start_value: 50
+          end_value: 50
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+  # === ORGASM COUNTDOWN (base stroke untouched) ===
+  # Ch3 finale pulse/amp/goodBoy only — leaves α/β/e1–e4 alone so the source
+  # stroke keeps playing. Place on "5"; orgasm cue at +21s.
+  # SC pulse 160 Hz → clamped to tool max 120. Amp ladder ≈ amp(n)/100 additive.
+  # Stretching duration_ms: lead-in + fade stay fixed; climax (seg_orgasm) grows;
+  # goodBoy scales with climax (min 5000 ms; grows as 5000 × seg_orgasm / 25867).
+
+  mcb_orgasm_countdown:
+    default_params:
+      duration_ms: 46867
+      pulse_rate: 120          # SC edgeCE 160 Hz; tool max 120
+      ramp_ms: 1500
+      # Volume ladder (amp 6→5→7→6→8→9) as additive boosts ≈ amp/100
+      amp6: 0.06
+      amp5: 0.05
+      amp7: 0.07
+      amp8: 0.08
+      amp9: 0.09
+      # Segment lengths between countdown cues
+      seg_5_ms: 4400           # "5" → "4"
+      seg_4_ms: 5000           # "4" → "3"
+      seg_3_ms: 4000           # "3" → "2"
+      seg_2_ms: 3167           # "2" → "1"
+      seg_1_ms: 4433           # "1" → orgasm enable
+      seg_orgasm_ms: 25867     # orgasm enable → fade
+      goodboy_offset_ms: 16567
+      goodboy_duration_ms: 5000
+      goodboy_pulse_rate: 27
+      goodboy_pulse_width: 50
+      goodboy_volume_boost: 0.01
+      orgasm_offset_ms: 21000
+
+    steps:
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: $pulse_rate
+          end_value: $pulse_rate
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+      # amp(6) at "5"
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: 0
+        params:
+          start_value: $amp6
+          end_value: $amp6
+          duration_ms: $seg_5_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: 0
+          mode: additive
+
+      # amp(5) at "4"
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: 4400
+        params:
+          start_value: $amp5
+          end_value: $amp5
+          duration_ms: $seg_4_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      # amp(7) at "3"
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: 9400
+        params:
+          start_value: $amp7
+          end_value: $amp7
+          duration_ms: $seg_3_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      # amp(6) at "2"
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: 13400
+        params:
+          start_value: $amp6
+          end_value: $amp6
+          duration_ms: $seg_2_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      # amp(8) at "1"
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: 16567
+        params:
+          start_value: $amp8
+          end_value: $amp8
+          duration_ms: $seg_1_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      # amp(9) orgasm enable → fade
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $orgasm_offset_ms
+        params:
+          start_value: $amp9
+          end_value: $amp9
+          duration_ms: $seg_orgasm_ms
+          ramp_in_ms: 0
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+      # Inlined goodBoy on "1" (temporarily overrides edge pulse)
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        start_offset: $goodboy_offset_ms
+        params:
+          start_value: $goodboy_pulse_rate
+          end_value: $goodboy_pulse_rate
+          duration_ms: $goodboy_duration_ms
+          ramp_in_ms: 250
+          ramp_out_ms: 250
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: pulse_width
+        start_offset: $goodboy_offset_ms
+        params:
+          start_value: $goodboy_pulse_width
+          end_value: $goodboy_pulse_width
+          duration_ms: $goodboy_duration_ms
+          ramp_in_ms: 250
+          ramp_out_ms: 250
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $goodboy_offset_ms
+        params:
+          start_value: $goodboy_volume_boost
+          end_value: $goodboy_volume_boost
+          duration_ms: $goodboy_duration_ms
+          ramp_in_ms: 250
+          mode: additive
+
+      # Full sensor mute from orgasm cue (+21s) through climax fade
+      - operation: apply_linear_change
+        axis: sensor_suppression
+        start_offset: $orgasm_offset_ms
+        params:
+          start_value: 100
+          end_value: 100
+          duration_ms: $seg_orgasm_ms
+          ramp_in_ms: 0
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+  # === ORGASM COUNTDOWN (STROKE OVERRIDE) ===
+  # Same as mcb_orgasm_countdown, plus overwrite α/β/e1–e4 with edgeCE motion.
+  # Same stretch rules as mcb_orgasm_countdown.
+
+  mcb_orgasm_countdown_stroke_override:
+    default_params:
+      duration_ms: 46867
+      pulse_rate: 120          # SC edgeCE 160 Hz; tool max 120
+      alpha_freq: 7
+      # Overwrite needs absolute center: peak=max_level, center=max_level-amplitude
+      alpha_amplitude: 0.45
+      alpha_max_level: 0.95    # center 0.50
+      beta_freq: 4
+      beta_amplitude: 0.4
+      beta_max_level: 0.9
+      beta_phase: 90
+      ramp_ms: 1500
+      amp6: 0.06
+      amp5: 0.05
+      amp7: 0.07
+      amp8: 0.08
+      amp9: 0.09
+      seg_5_ms: 4400
+      seg_4_ms: 5000
+      seg_3_ms: 4000
+      seg_2_ms: 3167
+      seg_1_ms: 4433
+      seg_orgasm_ms: 25867
+      goodboy_offset_ms: 16567
+      goodboy_duration_ms: 5000
+      goodboy_pulse_rate: 27
+      goodboy_pulse_width: 50
+      goodboy_volume_boost: 0.01
+      orgasm_offset_ms: 21000
+
+    steps:
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: $pulse_rate
+          end_value: $pulse_rate
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+      - operation: apply_modulation
+        axis: alpha
+        params:
+          waveform: sin
+          frequency: $alpha_freq
+          amplitude: $alpha_amplitude
+          max_level_offset: $alpha_max_level
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+      - operation: apply_modulation
+        axis: beta
+        params:
+          waveform: sin
+          frequency: $beta_freq
+          amplitude: $beta_amplitude
+          max_level_offset: $beta_max_level
+          phase: $beta_phase
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+      - operation: apply_modulation
+        axis: e1,e2,e3,e4
+        params:
+          waveform: sin
+          frequency: $alpha_freq
+          amplitude: $alpha_amplitude
+          max_level_offset: $alpha_max_level
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: 0
+        params:
+          start_value: $amp6
+          end_value: $amp6
+          duration_ms: $seg_5_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: 4400
+        params:
+          start_value: $amp5
+          end_value: $amp5
+          duration_ms: $seg_4_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: 9400
+        params:
+          start_value: $amp7
+          end_value: $amp7
+          duration_ms: $seg_3_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: 13400
+        params:
+          start_value: $amp6
+          end_value: $amp6
+          duration_ms: $seg_2_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: 16567
+        params:
+          start_value: $amp8
+          end_value: $amp8
+          duration_ms: $seg_1_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $orgasm_offset_ms
+        params:
+          start_value: $amp9
+          end_value: $amp9
+          duration_ms: $seg_orgasm_ms
+          ramp_in_ms: 0
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        start_offset: $goodboy_offset_ms
+        params:
+          start_value: $goodboy_pulse_rate
+          end_value: $goodboy_pulse_rate
+          duration_ms: $goodboy_duration_ms
+          ramp_in_ms: 250
+          ramp_out_ms: 250
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: pulse_width
+        start_offset: $goodboy_offset_ms
+        params:
+          start_value: $goodboy_pulse_width
+          end_value: $goodboy_pulse_width
+          duration_ms: $goodboy_duration_ms
+          ramp_in_ms: 250
+          ramp_out_ms: 250
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $goodboy_offset_ms
+        params:
+          start_value: $goodboy_volume_boost
+          end_value: $goodboy_volume_boost
+          duration_ms: $goodboy_duration_ms
+          ramp_in_ms: 250
+          mode: additive
+
+      # Edge mute for countdown lead-in; full mute from orgasm cue (+21s)
+      - operation: apply_linear_change
+        axis: sensor_suppression
+        params:
+          start_value: 50
+          end_value: 50
+          duration_ms: $orgasm_offset_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: 0
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: sensor_suppression
+        start_offset: $orgasm_offset_ms
+        params:
+          start_value: 100
+          end_value: 100
+          duration_ms: $seg_orgasm_ms
+          ramp_in_ms: 0
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+  # === OBEY EFFECT ===
+  # Dual sinusoidal modulation with moderate pulse frequency
+
+  mcb_obey:
+    default_params:
+      duration_ms: 10000
+      pulse_rate: 27           # Low pulse rate for smooth feeling
+      alpha_freq: 9            # 8 Hz in SC, avoid aliasing
+      alpha_amplitude: 0.4     # Moderate alpha modulation
+      alpha_offset: 0.6        # Bias for alpha
+      beta_freq: 7             # Slightly different from alpha
+      beta_amplitude: 0.7      # Stronger beta modulation
+      beta_phase: 90           # pi/2 phase shift
+      ramp_ms: 500
+
+    steps:
+      # Set pulse frequency
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: $pulse_rate
+          end_value: $pulse_rate
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+      # Alpha modulation with bias
+      - operation: apply_modulation
+        axis: alpha
+        params:
+          waveform: sin
+          frequency: $alpha_freq
+          amplitude: $alpha_amplitude
+          max_level_offset: $alpha_offset
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+  # === EXTRACT COMPOSITE (3P — RELENTLESS → OVERLOAD) ===
+  # Fresh from SCD Ch2 Relentless→end of pleasure overload (~265.367s).
+  # Hub–spoke polesCtrl: N=hub, spokes L/R (both legs). Motion steps are baked at
+  # expand by vector1a/extract_composite.py (not listed below).
+  # Cue timings scale with duration_ms; ~dur dwells stay absolute seconds.
+  # Min duration 60000 ms. Pulse width 65. Exact amp ladder. No goodBoy.
+  # NOTE: alpha/beta primary axes. In 4P-only setups use mcb_extract_4p.
+
+  mcb_extract:
+    default_params:
+      duration_ms: 265367
+      pulse_width: 65
+      ramp_ms: 500
+      # Optional: seed for reproducible spoke RNG (omit for random each Apply)
+
+    steps:
+      - operation: apply_linear_change
+        axis: pulse_width
+        params:
+          start_value: $pulse_width
+          end_value: $pulse_width
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        start_offset: $offset_pulse_0_ms
+        params:
+          start_value: $hz_pulse_0
+          end_value: $hz_pulse_0
+          duration_ms: $seg_pulse_0_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: 0
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        start_offset: $offset_pulse_1_ms
+        params:
+          start_value: $hz_pulse_1
+          end_value: $hz_pulse_1
+          duration_ms: $seg_pulse_1_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        start_offset: $offset_pulse_2_ms
+        params:
+          start_value: $hz_pulse_2
+          end_value: $hz_pulse_2
+          duration_ms: $seg_pulse_2_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        start_offset: $offset_pulse_3_ms
+        params:
+          start_value: $hz_pulse_3
+          end_value: $hz_pulse_3
+          duration_ms: $seg_pulse_3_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        start_offset: $offset_pulse_4_ms
+        params:
+          start_value: $hz_pulse_4
+          end_value: $hz_pulse_4
+          duration_ms: $seg_pulse_4_ms
+          ramp_in_ms: 0
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_0_ms
+        params:
+          start_value: $amp_0
+          end_value: $amp_0
+          duration_ms: $seg_amp_0_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_1_ms
+        params:
+          start_value: $amp_1
+          end_value: $amp_1
+          duration_ms: $seg_amp_1_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_2_ms
+        params:
+          start_value: $amp_2
+          end_value: $amp_2
+          duration_ms: $seg_amp_2_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_3_ms
+        params:
+          start_value: $amp_3
+          end_value: $amp_3
+          duration_ms: $seg_amp_3_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_4_ms
+        params:
+          start_value: $amp_4
+          end_value: $amp_4
+          duration_ms: $seg_amp_4_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_5_ms
+        params:
+          start_value: $amp_5
+          end_value: $amp_5
+          duration_ms: $seg_amp_5_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_6_ms
+        params:
+          start_value: $amp_6
+          end_value: $amp_6
+          duration_ms: $seg_amp_6_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_7_ms
+        params:
+          start_value: $amp_7
+          end_value: $amp_7
+          duration_ms: $seg_amp_7_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_8_ms
+        params:
+          start_value: $amp_8
+          end_value: $amp_8
+          duration_ms: $seg_amp_8_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_9_ms
+        params:
+          start_value: $amp_9
+          end_value: $amp_9
+          duration_ms: $seg_amp_9_ms
+          ramp_in_ms: 0
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: sensor_suppression
+        params:
+          start_value: 50
+          end_value: 50
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+  # === EXTRACT COMPOSITE (4P — HUB E1 ↔ SPOKES E2/E3/E4) ===
+  # Same proportional pulse/amp/~dur shell as mcb_extract. Motion: hub–spoke
+  # one-hot on e1–e4 (E1=hub like N; three spokes). Baked at Apply.
+
+  mcb_extract_4p:
+    default_params:
+      duration_ms: 265367
+      pulse_width: 65
+      ramp_ms: 500
+
+    steps:
+      - operation: apply_linear_change
+        axis: pulse_width
+        params:
+          start_value: $pulse_width
+          end_value: $pulse_width
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        start_offset: $offset_pulse_0_ms
+        params:
+          start_value: $hz_pulse_0
+          end_value: $hz_pulse_0
+          duration_ms: $seg_pulse_0_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: 0
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        start_offset: $offset_pulse_1_ms
+        params:
+          start_value: $hz_pulse_1
+          end_value: $hz_pulse_1
+          duration_ms: $seg_pulse_1_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        start_offset: $offset_pulse_2_ms
+        params:
+          start_value: $hz_pulse_2
+          end_value: $hz_pulse_2
+          duration_ms: $seg_pulse_2_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        start_offset: $offset_pulse_3_ms
+        params:
+          start_value: $hz_pulse_3
+          end_value: $hz_pulse_3
+          duration_ms: $seg_pulse_3_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        start_offset: $offset_pulse_4_ms
+        params:
+          start_value: $hz_pulse_4
+          end_value: $hz_pulse_4
+          duration_ms: $seg_pulse_4_ms
+          ramp_in_ms: 0
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_0_ms
+        params:
+          start_value: $amp_0
+          end_value: $amp_0
+          duration_ms: $seg_amp_0_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_1_ms
+        params:
+          start_value: $amp_1
+          end_value: $amp_1
+          duration_ms: $seg_amp_1_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_2_ms
+        params:
+          start_value: $amp_2
+          end_value: $amp_2
+          duration_ms: $seg_amp_2_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_3_ms
+        params:
+          start_value: $amp_3
+          end_value: $amp_3
+          duration_ms: $seg_amp_3_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_4_ms
+        params:
+          start_value: $amp_4
+          end_value: $amp_4
+          duration_ms: $seg_amp_4_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_5_ms
+        params:
+          start_value: $amp_5
+          end_value: $amp_5
+          duration_ms: $seg_amp_5_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_6_ms
+        params:
+          start_value: $amp_6
+          end_value: $amp_6
+          duration_ms: $seg_amp_6_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_7_ms
+        params:
+          start_value: $amp_7
+          end_value: $amp_7
+          duration_ms: $seg_amp_7_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_8_ms
+        params:
+          start_value: $amp_8
+          end_value: $amp_8
+          duration_ms: $seg_amp_8_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_9_ms
+        params:
+          start_value: $amp_9
+          end_value: $amp_9
+          duration_ms: $seg_amp_9_ms
+          ramp_in_ms: 0
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: sensor_suppression
+        params:
+          start_value: 50
+          end_value: 50
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+  # === EXTRACT BEAT-SYNC (3P) ===
+  # Sibling of mcb_extract: same pulse/amp/width/S1 shell and hub-spoke geometry.
+  # Pole dwells advance every 2nd L0 beat (companion .funscript / L0), or
+  # params.switch_offsets_ms from the events file. Falls back to SCD ~dur if sparse.
+  # Motion baked at expand by vector1a/extract_composite.py.
+
+  mcb_extract_beat:
+    default_params:
+      duration_ms: 265367
+      pulse_width: 65
+      ramp_ms: 500
+      # Optional: seed for reproducible spoke RNG (omit for random each Apply)
+
+    steps:
+      - operation: apply_linear_change
+        axis: pulse_width
+        params:
+          start_value: $pulse_width
+          end_value: $pulse_width
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        start_offset: $offset_pulse_0_ms
+        params:
+          start_value: $hz_pulse_0
+          end_value: $hz_pulse_0
+          duration_ms: $seg_pulse_0_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: 0
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        start_offset: $offset_pulse_1_ms
+        params:
+          start_value: $hz_pulse_1
+          end_value: $hz_pulse_1
+          duration_ms: $seg_pulse_1_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        start_offset: $offset_pulse_2_ms
+        params:
+          start_value: $hz_pulse_2
+          end_value: $hz_pulse_2
+          duration_ms: $seg_pulse_2_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        start_offset: $offset_pulse_3_ms
+        params:
+          start_value: $hz_pulse_3
+          end_value: $hz_pulse_3
+          duration_ms: $seg_pulse_3_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        start_offset: $offset_pulse_4_ms
+        params:
+          start_value: $hz_pulse_4
+          end_value: $hz_pulse_4
+          duration_ms: $seg_pulse_4_ms
+          ramp_in_ms: 0
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_0_ms
+        params:
+          start_value: $amp_0
+          end_value: $amp_0
+          duration_ms: $seg_amp_0_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_1_ms
+        params:
+          start_value: $amp_1
+          end_value: $amp_1
+          duration_ms: $seg_amp_1_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_2_ms
+        params:
+          start_value: $amp_2
+          end_value: $amp_2
+          duration_ms: $seg_amp_2_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_3_ms
+        params:
+          start_value: $amp_3
+          end_value: $amp_3
+          duration_ms: $seg_amp_3_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_4_ms
+        params:
+          start_value: $amp_4
+          end_value: $amp_4
+          duration_ms: $seg_amp_4_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_5_ms
+        params:
+          start_value: $amp_5
+          end_value: $amp_5
+          duration_ms: $seg_amp_5_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_6_ms
+        params:
+          start_value: $amp_6
+          end_value: $amp_6
+          duration_ms: $seg_amp_6_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_7_ms
+        params:
+          start_value: $amp_7
+          end_value: $amp_7
+          duration_ms: $seg_amp_7_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_8_ms
+        params:
+          start_value: $amp_8
+          end_value: $amp_8
+          duration_ms: $seg_amp_8_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_9_ms
+        params:
+          start_value: $amp_9
+          end_value: $amp_9
+          duration_ms: $seg_amp_9_ms
+          ramp_in_ms: 0
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: sensor_suppression
+        params:
+          start_value: 50
+          end_value: 50
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+  # === EXTRACT BEAT-SYNC (4P) ===
+  # Sibling of mcb_extract_4p: same shell; pad dwells every 2nd L0 beat.
+
+  mcb_extract_4p_beat:
+    default_params:
+      duration_ms: 265367
+      pulse_width: 65
+      ramp_ms: 500
+
+    steps:
+      - operation: apply_linear_change
+        axis: pulse_width
+        params:
+          start_value: $pulse_width
+          end_value: $pulse_width
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        start_offset: $offset_pulse_0_ms
+        params:
+          start_value: $hz_pulse_0
+          end_value: $hz_pulse_0
+          duration_ms: $seg_pulse_0_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: 0
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        start_offset: $offset_pulse_1_ms
+        params:
+          start_value: $hz_pulse_1
+          end_value: $hz_pulse_1
+          duration_ms: $seg_pulse_1_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        start_offset: $offset_pulse_2_ms
+        params:
+          start_value: $hz_pulse_2
+          end_value: $hz_pulse_2
+          duration_ms: $seg_pulse_2_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        start_offset: $offset_pulse_3_ms
+        params:
+          start_value: $hz_pulse_3
+          end_value: $hz_pulse_3
+          duration_ms: $seg_pulse_3_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        start_offset: $offset_pulse_4_ms
+        params:
+          start_value: $hz_pulse_4
+          end_value: $hz_pulse_4
+          duration_ms: $seg_pulse_4_ms
+          ramp_in_ms: 0
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_0_ms
+        params:
+          start_value: $amp_0
+          end_value: $amp_0
+          duration_ms: $seg_amp_0_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_1_ms
+        params:
+          start_value: $amp_1
+          end_value: $amp_1
+          duration_ms: $seg_amp_1_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_2_ms
+        params:
+          start_value: $amp_2
+          end_value: $amp_2
+          duration_ms: $seg_amp_2_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_3_ms
+        params:
+          start_value: $amp_3
+          end_value: $amp_3
+          duration_ms: $seg_amp_3_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_4_ms
+        params:
+          start_value: $amp_4
+          end_value: $amp_4
+          duration_ms: $seg_amp_4_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_5_ms
+        params:
+          start_value: $amp_5
+          end_value: $amp_5
+          duration_ms: $seg_amp_5_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_6_ms
+        params:
+          start_value: $amp_6
+          end_value: $amp_6
+          duration_ms: $seg_amp_6_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_7_ms
+        params:
+          start_value: $amp_7
+          end_value: $amp_7
+          duration_ms: $seg_amp_7_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_8_ms
+        params:
+          start_value: $amp_8
+          end_value: $amp_8
+          duration_ms: $seg_amp_8_ms
+          ramp_in_ms: 0
+          ramp_out_ms: 0
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        start_offset: $offset_amp_9_ms
+        params:
+          start_value: $amp_9
+          end_value: $amp_9
+          duration_ms: $seg_amp_9_ms
+          ramp_in_ms: 0
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: sensor_suppression
+        params:
+          start_value: 50
+          end_value: 50
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+  # === CORRUPT (4P — INHARMONIC DRIFT) ===
+  # Four electrodes each driven by sawtooth waves at inharmonic rates — none share common factors,
+  # so they never phase-lock with each other or with the stroke. The sharp sawtooth resets add
+  # a glitchy discontinuous quality. Starting phases are deliberately irregular to prevent any
+  # coherent pattern at the onset. Base stroke beat remains perceptible underneath (additive).
+  # NOTE: Only affects 4P (e1-e4) mode.
+
+  corrupt_4p:
+    default_params:
+      duration_ms: 30000
+      amplitude: 0.3               # Drift depth — reduce if overwhelming, raise for more chaos
+      ramp_ms: 2000
+
+    steps:
+      - operation: apply_modulation
+        axis: e1
+        params:
+          waveform: sawtooth
+          frequency: 0.71
+          amplitude: $amplitude
+          max_level_offset: 0
+          phase: 0
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+      - operation: apply_modulation
+        axis: e2
+        params:
+          waveform: sawtooth
+          frequency: 1.13
+          amplitude: $amplitude
+          max_level_offset: 0
+          phase: 127
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+      - operation: apply_modulation
+        axis: e3
+        params:
+          waveform: sawtooth
+          frequency: 0.89
+          amplitude: $amplitude
+          max_level_offset: 0
+          phase: 251
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+      - operation: apply_modulation
+        axis: e4
+        params:
+          waveform: sawtooth
+          frequency: 1.47
+          amplitude: $amplitude
+          max_level_offset: 0
+          phase: 73
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+  # === DENIAL EFFECT ===
+  # Temporary reduction of stimulation
+
+  mcb_denial:
+    default_params:
+      duration_ms: 8000
+      volume_reduction: -0.3   # Drop power significantly
+      pulse_rate: 60           # Moderate pulse rate
+      ramp_ms: 1000
+
+    steps:
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        params:
+          start_value: $volume_reduction
+          end_value: $volume_reduction
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: $pulse_rate
+          end_value: $pulse_rate
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+  # === TEASE EFFECT ===
+  # Gentle teasing sensation with low-frequency modulation
+
+  mcb_tease:
+    default_params:
+      duration_ms: 12000
+      tease_freq: 5            # Slow teasing oscillation
+      tease_amplitude: 0.25    # Gentle modulation
+      pulse_rate: 45           # Moderate pulse rate
+      ramp_ms: 1000
+
+    steps:
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: $pulse_rate
+          end_value: $pulse_rate
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+      - operation: apply_modulation
+        axis: volume,volume-prostate
+        params:
+          waveform: sin
+          frequency: $tease_freq
+          amplitude: $tease_amplitude
+          max_level_offset: 0
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+  # === INTENSITY BUILD ===
+  # Gradual volume increase for building arousal
+
+  mcb_intensity_build:
+    default_params:
+      duration_ms: 10000
+      start_boost: 0.0         # Start from current level
+      end_boost: 0.15          # Build up to +15%
+      ramp_ms: 2000
+
+    steps:
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        params:
+          start_value: $start_boost
+          end_value: $end_boost
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+  # === RELEASE ===
+  # Gradual reduction after intense stimulation
+
+  mcb_release:
+    default_params:
+      duration_ms: 8000
+      volume_drop: -0.2        # Reduce power
+      pulse_rate: 40           # Lower pulse rate
+      ramp_ms: 2000
+
+    steps:
+      - operation: apply_linear_change
+        axis: volume
+        params:
+          start_value: $volume_drop
+          end_value: $volume_drop
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: $pulse_rate
+          end_value: $pulse_rate
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+  # === THROB EFFECT ===
+  # Pulsating sensation with medium frequency
+
+  mcb_throb:
+    default_params:
+      duration_ms: 10000
+      throb_freq: 3            # Slow throbbing
+      throb_amplitude: 0.4     # Noticeable pulsation
+      pulse_rate: 55           # Medium pulse rate
+      ramp_ms: 500
+
+    steps:
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: $pulse_rate
+          end_value: $pulse_rate
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+      - operation: apply_modulation
+        axis: volume,volume-prostate
+        params:
+          waveform: sin
+          frequency: $throb_freq
+          amplitude: $throb_amplitude
+          max_level_offset: 0
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+  # === CALM EFFECT ===
+  # Soothing, gentle stimulation
+
+  mcb_calm:
+    default_params:
+      duration_ms: 15000
+      calm_freq: 2             # Very slow oscillation
+      calm_amplitude: 0.15     # Gentle swaying
+      pulse_rate: 35           # Low pulse rate
+      offset: -0.02             # Slightly below baseline
+      ramp_ms: 1000
+
+    steps:
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: $pulse_rate
+          end_value: $pulse_rate
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+      - operation: apply_modulation
+        axis: volume
+        params:
+          waveform: sin
+          frequency: $calm_freq
+          amplitude: $calm_amplitude
+          max_level_offset: $offset
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+
+
+  # Event Definitions from AquariumParrot's Clutch 
+  # Based on SuperCollider scripts 
+  #
+  # These events recreate the effects from the original Clutch hypno-estim project
+  # using our YAML-based custom events system.
+
+  # === REWARD EFFECTS ===
+  # These create pleasurable sensations through lower pulse rates and volume boosts
+
+  clutch_good_slave:
+    default_params:
+      duration_ms: 5000
+      pulse_rate: 27          
+      pulse_width: 45         
+      volume_boost: 0.01      
+      ramp_ms: 250
+
+    steps:
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        params:
+          start_value: $volume_boost
+          end_value: $volume_boost
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: $pulse_rate
+          end_value: $pulse_rate
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: pulse_width
+        params:
+          start_value: $pulse_width
+          end_value: $pulse_width
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          mode: overwrite
+
+  clutch_reward:
+    default_params:
+      duration_ms: 5000
+      pulse_rate: 35          
+      pulse_width: 45
+      volume_boost: 0.01
+      ramp_ms: 250
+
+    steps:
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        params:
+          start_value: $volume_boost
+          end_value: $volume_boost
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: $pulse_rate
+          end_value: $pulse_rate
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: pulse_width
+        params:
+          start_value: $pulse_width
+          end_value: $pulse_width
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          mode: overwrite
+
+  clutch_higher_rate:
+    default_params:
+      duration_ms: 8000
+      pulse_rate: 120         
+      pulse_width: 40
+      volume_boost: 0.01
+      ramp_ms: 500
+
+    steps:
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        params:
+          start_value: $volume_boost
+          end_value: $volume_boost
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: pulse_frequency
+        params:
+          start_value: $pulse_rate
+          end_value: $pulse_rate
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          mode: overwrite
+
+      - operation: apply_linear_change
+        axis: pulse_width
+        params:
+          start_value: $pulse_width
+          end_value: $pulse_width
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          mode: overwrite
+
+  clutch_edge:
+    default_params:
+      duration_ms: 15000
+      volume_boost: 0.01      
+      buzz_freq: 65           
+      buzz_intensity: 0.08    
+      ramp_ms: 500
+
+    steps:
+      # Base volume increase for edging
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        params:
+          start_value: $volume_boost
+          end_value: $volume_boost
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          mode: additive
+
+      # High-frequency buzz creates the edging sensation
+      - operation: apply_modulation
+        axis: volume,volume-prostate
+        params:
+          waveform: sin
+          frequency: $buzz_freq
+          amplitude: $buzz_intensity
+          max_level_offset: 0
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+      - operation: apply_linear_change
+        axis: sensor_suppression
+        params:
+          start_value: 50
+          end_value: 50
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: overwrite
+
+  # === PULSAR/SPIKE EFFECTS ===
+  # Buzzing sensations from high-frequency modulation
+
+  clutch_spike:
+    default_params:
+      duration_ms: 8000
+      spike_freq: 65          # High buzz frequency (spikePulseFreq)
+      spike_amplitude: 0.15   # Strong buzzing sensation (spikePulseAmp)
+      volume_level: 0.05      # Sus level for spike
+      ramp_ms: 250
+
+    steps:
+      # Set base volume level during spike
+      - operation: apply_linear_change
+        axis: volume,volume-prostate
+        params:
+          start_value: $volume_level
+          end_value: $volume_level
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+      # High-frequency modulation creates buzzing
+      - operation: apply_modulation
+        axis: volume
+        params:
+          waveform: sin
+          frequency: $spike_freq
+          amplitude: $spike_amplitude
+          max_level_offset: 0
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+  clutch_tantalize:
+    default_params:
+      duration_ms: 10000
+      tease_freq: 23          # Low, teasing frequency (avoid 20 Hz aliasing)
+      tease_amplitude: 0.05   # Gentle teasing sensation
+      volume_level: 0.01       # Lower power ceiling for teasing
+      ramp_ms: 500
+
+    steps:
+      # Low-frequency modulation creates teasing sensation
+      - operation: apply_modulation
+        axis: volume,volume-prostate
+        params:
+          waveform: sin
+          frequency: $tease_freq
+          amplitude: $tease_amplitude
+          max_level_offset: $volume_level
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+  clutch_tranquil:
+    default_params:
+      duration_ms: 20000
+      calm_freq: 17           # Very slow, calming oscillation
+      calm_amplitude: 0.3     # Gentle swaying sensation
+      level: -0.01           # Slight reduction from baseline
+      ramp_ms: 1000
+
+    steps:
+      - operation: apply_modulation
+        axis: volume,volume-prostate
+        params:
+          waveform: sin
+          frequency: $calm_freq
+          amplitude: $calm_amplitude
+          max_level_offset: $level
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+  # === FREQUENCY SHIFTS ===
+  # Temporary carrier frequency changes (freq_change in SC)
+
+  clutch_freq_shift_up:
+    default_params:
+      duration_ms: 5000
+      freq_shift: 50          # Shift carrier up by 50 Hz
+      ramp_ms: 250
+
+    steps:
+      - operation: apply_linear_change
+        axis: frequency
+        params:
+          start_value: $freq_shift
+          end_value: $freq_shift
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+  clutch_freq_shift_down:
+    default_params:
+      duration_ms: 5000
+      freq_shift: -50         # Shift carrier down by 50 Hz
+      ramp_ms: 250
+
+    steps:
+      - operation: apply_linear_change
+        axis: frequency
+        params:
+          start_value: $freq_shift
+          end_value: $freq_shift
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: additive
+
+  # === PULSE MODULATION ===
+  # Modulate pulse width for textural changes
+
+  clutch_pulse_wobble:
+    default_params:
+      duration_ms: 10000
+      wobble_freq: 3          # Slow wobble
+      wobble_amplitude: 5     # ±5% pulse width variation
+      ramp_ms: 500
+
+    steps:
+      - operation: apply_modulation
+        axis: pulse_width
+        params:
+          waveform: sin
+          frequency: $wobble_freq
+          amplitude: $wobble_amplitude
+          max_level_offset: 0
+          duration_ms: $duration_ms
+          ramp_in_ms: $ramp_ms
+          ramp_out_ms: $ramp_ms
+          mode: additive
+

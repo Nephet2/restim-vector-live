@@ -35,6 +35,7 @@ class OutputSample:
     reversal_distance_seconds: float = math.inf
     stroke_progress: float = 0.5
     variation_depth: float = 0.0
+    prostate_bounds_known: bool = False
 
 
 @dataclass(frozen=True)
@@ -92,6 +93,7 @@ class VectorEngine:
         self._stroke_direction = 0
         self._stroke_sequence = 0
         self._completed_strokes: deque[SegmentState] = deque(maxlen=256)
+        self._known_stroke_bounds: tuple[float, float] | None = None
         self.dynamic_volume = True
         self.volume_rest_level = 0.4
         self.volume_ramp_speed_ratio = 20.0
@@ -263,10 +265,18 @@ class VectorEngine:
     def _modified_segment(self, segment: SegmentState, at_time: float) -> SegmentState:
         return transform_segment(segment, self._modifier_values(at_time))
 
-    def receive_l0(self, value: float, interval_ms: int = 0, received_at: float | None = None) -> None:
+    def receive_l0(self, value: float, interval_ms: int = 0,
+                   received_at: float | None = None,
+                   stroke_bounds: tuple[float, float] | None = None) -> None:
         now = self.clock() if received_at is None else received_at
         value = min(1.0, max(0.0, value))
         with self._lock:
+            if stroke_bounds is None:
+                self._known_stroke_bounds = None
+            else:
+                low, high = sorted((min(1.0, max(0.0, float(stroke_bounds[0]))),
+                                    min(1.0, max(0.0, float(stroke_bounds[1])))))
+                self._known_stroke_bounds = (low, high)
             current = self._segment.position(now)
             if interval_ms > 0:
                 duration = interval_ms / 1000.0
@@ -352,7 +362,8 @@ class VectorEngine:
                 )
                 sample = replace(sample, output_l0=position, speed_percent=speed,
                                  alpha=alpha, beta=beta)
-            if stroke.start_time <= sample.calculated_at <= stroke.end_time:
+            if (not sample.prostate_bounds_known
+                    and stroke.start_time <= sample.calculated_at <= stroke.end_time):
                 pa, pb = self._calculate_prostate(
                     self._jitter_segment(
                         self._modified_segment(stroke, sample.calculated_at), sample.variation_depth),
@@ -613,8 +624,13 @@ class VectorEngine:
             pulse_width = self._calculate_pulse_width(scheduled_at, speed, output_l0)
             prostate_segment = self._jitter_segment(
                 self._modified_segment(self._stroke_for_time(scheduled_at), scheduled_at), variation_depth)
-            alpha_prostate, beta_prostate = self._calculate_prostate(
-                prostate_segment, scheduled_at)
+            known_bounds = self._known_stroke_bounds
+            if known_bounds is None:
+                alpha_prostate, beta_prostate = self._calculate_prostate(
+                    prostate_segment, scheduled_at)
+            else:
+                alpha_prostate, beta_prostate = self._calculate_known_prostate(
+                    scheduled_at, variation_depth, known_bounds)
             volume_prostate = self._calculate_prostate_volume(scheduled_at, speed)
             self._sequence += 1
             sample = OutputSample(
@@ -628,6 +644,7 @@ class VectorEngine:
                 self._nearest_reversal_distance(scheduled_at),
                 self._stroke_progress(prostate_segment, scheduled_at),
                 variation_depth,
+                known_bounds is not None,
             )
             heapq.heappush(self._queue, (sample.due_at, sample.sequence, sample))
 
@@ -812,6 +829,32 @@ class VectorEngine:
             beta_direction = bulge if going_up else -(bulge * self.prostate_narrow_ratio)
             beta = 0.5 + beta_direction * math.sin(progress * math.pi)
         return min(1.0, max(0.0, alpha)), min(1.0, max(0.0, beta))
+
+    def _calculate_known_prostate(self, at_time: float, variation_depth: float,
+                                  bounds: tuple[float, float]) -> tuple[float, float]:
+        """Calculate the prostate path from a generated plan's known bounds."""
+        low, high = bounds
+
+        def transformed(value: float) -> float:
+            point = SegmentState(0, at_time, at_time, value, value)
+            point = self._modified_segment(point, at_time)
+            point = self._jitter_segment(point, variation_depth)
+            return point.end_position
+
+        value = transformed(self._raw_l0)
+        low, high = sorted((transformed(low), transformed(high)))
+        if high - low <= 1e-9 or self._stroke_direction == 0:
+            return 1.0 - value, 0.5
+        if self._stroke_direction > 0:
+            start, end = low, high
+            progress = (value - low) / (high - low)
+        else:
+            start, end = high, low
+            progress = (high - value) / (high - low)
+        synthetic = SegmentState(0, 0.0, 1.0, start, end,
+                                 self._segment.speed_percent)
+        return self._calculate_prostate(
+            synthetic, min(1.0, max(0.0, progress)))
 
     def _calculate_prostate_volume(self, at_time: float, speed_percent: float) -> float:
         ratio = min(40.0, self.volume_ramp_speed_ratio * self.prostate_volume_multiplier)

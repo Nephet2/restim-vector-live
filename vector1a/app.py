@@ -9,6 +9,9 @@ from collections import deque
 from tkinter import filedialog, messagebox, ttk
 
 from .engine import OutputSample, VectorEngine
+from .pressure_control import PressureControl
+from .howl_conversion import LiveConversion, positional as howl_positional
+from .events import AXIS_AUTHORED, EventEngine
 from .motion import MotionMode, MotionParameters
 from .network import LatestFrameDispatcher, MFPListener, ReStimWebSocketClient
 from .routing import AuthoredAxisRouter
@@ -27,8 +30,9 @@ from .fourphase import (ELECTRODE_ORDERS, SPATIAL_MODELS, adaptive_crossover_wid
                         proportional_reversal_boost, reversal_emphasis_envelope,
                         stroke_phase_crossover, restim_crossfade, vertical_crossfade)
 from .spatial_gain import SpatialGainController, apply_gain
-from .focus import (TOP_FOCUS_LABELS, BOTTOM_FOCUS_LABELS, apply_top_focus, apply_bottom_focus,
-                    top_focus_weights, bottom_focus_window, FocusHistory)
+from .focus import (TOP_FOCUS_LABELS, BOTTOM_FOCUS_LABELS, apply_top_focus,
+                    apply_bottom_focus_window, top_focus_weights, bottom_focus_window,
+                    BottomFocusTransition, FocusHistory)
 from . import __version__
 
 
@@ -70,7 +74,7 @@ class CollapsibleSection(ttk.Frame):
         self._render()
 
     def _render(self) -> None:
-        self.button.configure(text="▶" if self.collapsed else "▼")
+        self.button.configure(text="+" if self.collapsed else "-")
         if self.collapsed:
             self.body.grid_remove()
         else:
@@ -78,7 +82,31 @@ class CollapsibleSection(ttk.Frame):
 
 
 class VectorApp:
+    DIRECTOR_EVENT_CATALOG = {
+        "mcb_tease": ("Tease", "Slow volume modulation with a moderate pulse rate", 12.0),
+        "mcb_throb": ("Throb", "Pronounced low-rate volume modulation", 10.0),
+        "mcb_calm": ("Calm", "Gentle modulation with a lower pulse rate", 15.0),
+        "mcb_intensity_build": ("Intensity build", "Gradual temporary increase", 10.0),
+        "mcb_release": ("Release", "Gradual temporary reduction", 8.0),
+        "clutch_tranquil": ("Tranquil", "Slow, smooth volume modulation", 20.0),
+        "clutch_pulse_wobble": ("Pulse wobble", "Temporary pulse-width movement", 10.0),
+        "pulse_freq_shift": ("Pulse-frequency shift", "Temporary pulse-frequency offset", 5.0),
+        "pulse_width_shift": ("Pulse-width shift", "Temporary pulse-width offset", 5.0),
+        "volume_shift": ("Volume shift", "Small temporary volume offset", 5.0),
+    }
+    DIRECTOR_EVENT_MIN_SECONDS = 2.0
+    DIRECTOR_EVENT_MAX_SECONDS = 30.0
+    DIRECTOR_EVENT_PARAM_OVERRIDES = {
+        "mcb_tease": {"tease_amplitude": 0.08},
+        "mcb_throb": {"throb_amplitude": 0.10},
+        "mcb_calm": {"calm_amplitude": 0.07},
+        "mcb_intensity_build": {"end_boost": 0.08},
+        "mcb_release": {"volume_drop": -0.10},
+        "clutch_tranquil": {"calm_amplitude": 0.08},
+        "volume_shift": {"shift_start": 0.05, "shift_end": 0.05},
+    }
     FOUR_PHASE_PRESET_FIELDS = (
+        "howl_width", "howl_pan", "howl_boost", "howl_sigma", "howl_pulse", "howl_thump", "howl_freq_min", "howl_freq_max", "howl_balance_a", "howl_balance_b", "howl_scaling", "howl_position_strength", "match_spatial_intensity",
         "four_phase_return_depth", "four_phase_invert", "four_phase_volume_ceiling",
         "four_phase_volume_modulation", "four_phase_volume_headroom",
         "four_phase_volume_cycle", "four_phase_crossover_width",
@@ -105,6 +133,8 @@ class VectorApp:
     PRIMARY_SPATIAL_NAMES = {
         "top_moving_focus": "Top — Moving Focus",
         "top_depth_spread": "Top — Depth Spread",
+        "top_howl_positional": "Top — Howl Positional",
+        "top_howl_dynamic": "Top — Howl Dynamic",
     }
     SECONDARY_SPATIAL_NAMES = {
         "bottom_focus": "Bottom Focus",
@@ -155,12 +185,15 @@ class VectorApp:
     )
 
     SETTINGS_FIELDS = (
+        "automatic_ready",
+        "send_frequency", "send_pulse_frequency", "send_pulse_rise", "send_pulse_width",
+        "howl_width", "howl_pan", "howl_boost", "howl_sigma", "howl_pulse", "howl_thump", "howl_freq_min", "howl_freq_max", "howl_balance_a", "howl_balance_b", "howl_scaling", "howl_position_strength", "match_spatial_intensity",
         "mfp_host", "mfp_port", "restim_host", "restim_port", "prostate_host", "prostate_port",
         "timeline_media_host", "timeline_vlc_port", "timeline_vlc_password", "timeline_mpc_port",
         "timeline_script_libraries", "timeline_auto_load_script", "timeline_clock_source",
         "four_phase_host", "four_phase_port",
         "auto_start_mfp", "auto_start_restim", "auto_start_prostate",
-        "director_enabled", "director_host", "director_port",
+        "director_enabled", "director_host", "director_port", "director_events_enabled",
         "top_focus_nominal_ceiling", "top_focus_strength", "bottom_focus_strength",
         "top_spatial_gain_step_percent", "bottom_spatial_gain_step_percent",
         "top_spatial_gain_min_percent", "top_spatial_gain_max_percent",
@@ -228,6 +261,8 @@ class VectorApp:
         self.prostate_port = tk.IntVar(value=12350)
         self.four_phase_host = tk.StringVar(value="127.0.0.1")
         self.four_phase_port = tk.IntVar(value=12351)
+        self.automatic_ready = tk.BooleanVar(value=True)
+        self._automatic_ready_stop = threading.Event()
         self.auto_start_mfp = tk.BooleanVar(value=False)
         self.auto_start_restim = tk.BooleanVar(value=False)
         self.auto_start_prostate = tk.BooleanVar(value=False)
@@ -239,6 +274,7 @@ class VectorApp:
         self.director_host = tk.StringVar(value="127.0.0.1")
         self.director_port = tk.IntVar(value=11436)
         self.director_status = tk.StringVar(value="DIRECTOR: OFF")
+        self.director_events_enabled = tk.BooleanVar(value=False)
         self._director_window = None
         self.session_ready_status = tk.StringVar(value="SESSION: MANUAL")
         self._startup_in_progress = False
@@ -311,6 +347,25 @@ class VectorApp:
         self.four_phase_moving_sequence_depth = tk.DoubleVar(value=.50)
         self.four_phase_moving_sequence_width = tk.DoubleVar(value=1.0)
         self.four_phase_moving_sequence_live = tk.StringVar(value="off")
+        self.send_frequency = tk.BooleanVar(value=True)
+        self.send_pulse_frequency = tk.BooleanVar(value=True)
+        self.send_pulse_rise = tk.BooleanVar(value=True)
+        self.send_pulse_width = tk.BooleanVar(value=True)
+        self._howl_converter = LiveConversion()
+        self._howl_frame = None
+        self.howl_width = tk.DoubleVar(value=.35)
+        self.howl_pan = tk.DoubleVar(value=.8)
+        self.howl_boost = tk.DoubleVar(value=.8)
+        self.howl_sigma = tk.DoubleVar(value=.2)
+        self.howl_pulse = tk.BooleanVar(value=False)
+        self.howl_thump = tk.DoubleVar(value=.5)
+        self.howl_freq_min = tk.DoubleVar(value=1)
+        self.howl_freq_max = tk.DoubleVar(value=100)
+        self.howl_balance_a = tk.DoubleVar(value=.5)
+        self.howl_balance_b = tk.DoubleVar(value=.5)
+        self.howl_scaling = tk.DoubleVar(value=1)
+        self.howl_position_strength = tk.DoubleVar(value=1)
+        self.match_spatial_intensity = tk.BooleanVar(value=True)
         self.four_phase_spatial_model = tk.StringVar(value="Moving focus")
         self.four_phase_tip_retention = tk.DoubleVar(value=.80)
         self.four_phase_spread_softness = tk.DoubleVar(value=.20)
@@ -420,6 +475,7 @@ class VectorApp:
             "variation_depth",
         )}
 
+        self._status_updates = queue.SimpleQueue()
         self._connection_events: deque[str] = deque(maxlen=200)
         self._last_connection_event: dict[str, str] = {}
         self._last_health_log_at = 0.0
@@ -427,6 +483,8 @@ class VectorApp:
         self._last_health_output_count = 0
 
         self.axis_router = AuthoredAxisRouter()
+        self.event_engine = EventEngine()
+        self._director_event_history: deque[dict] = deque(maxlen=12)
         self.director_bridge = DirectorBridge()
         self.director_server = DirectorServer(self.director_bridge)
         self.orchestrator = SessionOrchestrator(self._set_startup_status)
@@ -434,6 +492,10 @@ class VectorApp:
         self.prostate_restim = ReStimWebSocketClient(self._set_prostate_status)
         self.restim_sender = LatestFrameDispatcher("Primary", self._set_restim_status)
         self.prostate_sender = LatestFrameDispatcher("Prostate", self._set_prostate_status)
+        self.pressure_control = PressureControl()
+        self._pressure_fault_seen = False
+        self.restim.pressure_control = self.pressure_control
+        self.prostate_restim.pressure_control = self.pressure_control
         self.engine = VectorEngine(self._send_sample)
         self._latest_authored_l0 = 0.5
         self.generated_motion = GeneratedMotionSource(self._receive_generated_l0)
@@ -468,11 +530,18 @@ class VectorApp:
                                        self._xinput_state_threaded)
         self.sections = {}
         self._first_run = self._load_settings()
+        self._sync_primary_spatial()
+        self.four_phase_spatial_model.trace_add("write", self._sync_primary_spatial)
+        self._update_output_axes()
+        for variable in (self.send_frequency, self.send_pulse_frequency,
+                         self.send_pulse_rise, self.send_pulse_width):
+            variable.trace_add("write", self._update_output_axes)
         self._apply_timeline_media_settings()
         # Focus dwell/history begins after saved settings are restored, so startup
         # loading is not mistaken for an intentional Director transition.
         self._top_focus_history = FocusHistory(self.director_top_focus.get())
         self._bottom_focus_history = FocusHistory(self.director_bottom_focus.get())
+        self._bottom_focus_transition = BottomFocusTransition(self.director_bottom_focus.get())
         self._top_spatial_gain = SpatialGainController()
         self._bottom_spatial_gain = SpatialGainController()
         self.director_top_focus.trace_add("write", self._on_top_focus_changed)
@@ -492,6 +561,14 @@ class VectorApp:
             self.root.after(500, self.show_setup_guide)
         self.root.protocol("WM_DELETE_WINDOW", self.close)
 
+    def _update_output_axes(self, *_args) -> None:
+        disabled = {axis for axis, variable in (
+            ("C0", self.send_frequency), ("P0", self.send_pulse_frequency),
+            ("P3", self.send_pulse_rise), ("P1", self.send_pulse_width)) if not variable.get()}
+        self.restim.suppressed_axes = frozenset(disabled)
+        self.prostate_restim.suppressed_axes = frozenset(
+            "F0" if axis == "C0" else axis for axis in disabled)
+
     def _frame(self, title: str, row: int, column: int = 0, span: int = 1) -> ttk.Frame:
         collapsed_titles = {
             "Frequency", "Pulse frequency", "Pulse rise time", "Pulse width",
@@ -500,6 +577,18 @@ class VectorApp:
         }
         section = CollapsibleSection(self.root, title, collapsed=(title in collapsed_titles))
         section.grid(row=row + 1, column=column, columnspan=span, sticky="nsew", padx=10, pady=3)
+        send_control = {"Frequency": self.send_frequency,
+                        "Pulse frequency": self.send_pulse_frequency,
+                        "Pulse rise time": self.send_pulse_rise,
+                        "Pulse width": self.send_pulse_width}.get(title)
+        if send_control is not None:
+            ttk.Checkbutton(section, text="Send TCode", variable=send_control,
+                            command=self._save_settings).grid(row=0, column=3, sticky="e", padx=8)
+            section.body.grid_configure(columnspan=4)
+            for child in section.winfo_children():
+                if isinstance(child, ttk.Separator):
+                    child.grid_configure(columnspan=4)
+
         self.sections[title] = section
         return section.body
 
@@ -514,6 +603,7 @@ class VectorApp:
         ttk.Button(toolbar, text="START / RESUME", command=self.resume).pack(side="left", padx=(24, 6))
         ttk.Button(toolbar, text="Neutral", command=self.neutral).pack(side="left", padx=6)
         ttk.Button(toolbar, text="STOP", command=self.stop).pack(side="left", padx=6)
+        ttk.Button(toolbar, text="Pressure", command=lambda: self.pressure_control.show(self.root, self.stop)).pack(side="left", padx=6)
         ttk.Button(toolbar, text="Setup guide", command=self.show_setup_guide).pack(side="left", padx=(18, 6))
         ttk.Button(toolbar, text="Rolling Variety", command=self.show_variety_window).pack(side="left", padx=6)
         ttk.Button(toolbar, text="Presets A/B", command=self.show_preset_window).pack(side="left", padx=6)
@@ -833,9 +923,47 @@ class VectorApp:
         ttk.Spinbox(reverse_sharpness, from_=.2, to=5, increment=.1,
                     textvariable=self.four_phase_reverse_sharpness,
                     width=7).pack(side="left", padx=(4, 0))
+        howl_controls = ttk.LabelFrame(four_phase, text="Howl conversion", padding=6)
+        howl_controls.grid(row=30, column=0, columnspan=6, sticky="ew", pady=8)
+        for column, (label, variable, low, high) in enumerate((
+                ("Sensation width", self.howl_width, 0, 1),
+                ("Dynamic panning", self.howl_pan, 0, 1),
+                ("Slow-motion boost", self.howl_boost, 0, .99),
+                ("Smoothing (s)", self.howl_sigma, .01, 1))):
+            ttk.Label(howl_controls, text=label).grid(row=0, column=column)
+            ttk.Spinbox(howl_controls, from_=low, to=high, increment=.05,
+                        textvariable=variable, width=9).grid(row=1, column=column)
+        ttk.Label(howl_controls, text="Thump strength").grid(row=0, column=4)
+        ttk.Spinbox(howl_controls, from_=0, to=1, increment=.05,
+                    textvariable=self.howl_thump, width=9).grid(row=1, column=4)
+        for index, (label, variable, low, high, step) in enumerate((
+                ("Pulse min (Hz)", self.howl_freq_min, 1, 100, 1),
+                ("Pulse max (Hz)", self.howl_freq_max, 1, 100, 1),
+                ("Frequency balance A", self.howl_balance_a, 0, 1, .05),
+                ("Frequency balance B", self.howl_balance_b, 0, 1, .05),
+                ("Amplitude scaling", self.howl_scaling, 0, 1, .05),
+                ("Positional effect", self.howl_position_strength, 0, 1, .05))):
+            row, col = 4 + (index // 3)*2, index % 3
+            ttk.Label(howl_controls, text=label).grid(row=row, column=col, padx=6)
+            ttk.Spinbox(howl_controls, from_=low, to=high, increment=step,
+                        textvariable=variable, width=9).grid(row=row+1, column=col)
+        ttk.Label(howl_controls, text="Balance: 0 reduces high frequencies; 0.5 neutral; "
+                  "1 reduces low frequencies. Pulse range is within ReStim's 1–100 Hz mapping.",
+                  wraplength=680).grid(row=8, column=0, columnspan=5, sticky="w")
+        ttk.Checkbutton(howl_controls, text="Match intensity across spatial modes",
+                        variable=self.match_spatial_intensity,
+                        command=self._save_settings).grid(row=9, column=0, columnspan=5, sticky="w")
+        ttk.Label(howl_controls, text="Uses one movement-based volume envelope for Moving Focus, "
+                  "Depth Spread and both Howl modes. Howl amplitude controls apply to all four.",
+                  wraplength=680).grid(row=10, column=0, columnspan=5, sticky="w")
+        ttk.Checkbutton(howl_controls, text="Howl pulse frequency and low-frequency thump",
+                        variable=self.howl_pulse).grid(row=2, column=0, columnspan=4, sticky="w")
+        ttk.Label(howl_controls, text="Pulse option requires ReStim P0 range 1–100 Hz, P1 range 3–20 cycles. "
+                  "Carrier and rise time remain Vector controls.", wraplength=680).grid(
+                      row=3, column=0, columnspan=4, sticky="w")
         ttk.Label(four_phase, text="Spatial model").grid(row=10, column=0, sticky="w")
         ttk.Combobox(four_phase, textvariable=self.four_phase_spatial_model,
-                     values=SPATIAL_MODELS, state="readonly", width=14).grid(
+                     values=SPATIAL_MODELS, state="readonly", width=19).grid(
                          row=10, column=1, sticky="w")
         ttk.Label(four_phase, text="Tip retention at full depth").grid(
             row=10, column=2, sticky="e", padx=(8, 4))
@@ -1018,15 +1146,15 @@ class VectorApp:
 
     def _set_mfp_status(self, text: str) -> None:
         self._record_connection_event("MFP", text)
-        self.root.after(0, self.mfp_status.set, text)
+        self._status_updates.put((self.mfp_status, text))
 
     def _set_restim_status(self, text: str) -> None:
         self._record_connection_event("Primary", text)
-        self.root.after(0, self.restim_status.set, text)
+        self._status_updates.put((self.restim_status, text))
 
     def _set_prostate_status(self, text: str) -> None:
         self._record_connection_event("Prostate", text)
-        self.root.after(0, self.prostate_status.set, text)
+        self._status_updates.put((self.prostate_status, text))
 
     def _record_connection_event(self, source: str, text: str) -> None:
         if self._last_connection_event.get(source) == text:
@@ -1074,10 +1202,7 @@ class VectorApp:
 
     def _set_startup_status(self, text: str) -> None:
         self._record_connection_event("Startup", text)
-        try:
-            self.root.after(0, self.startup_status.set, text)
-        except (RuntimeError, tk.TclError):
-            pass
+        self._status_updates.put((self.startup_status, text))
 
     def _browse_launch_target(self, variable: tk.StringVar) -> None:
         selected = filedialog.askopenfilename(
@@ -1091,7 +1216,7 @@ class VectorApp:
         window = tk.Toplevel(self.root)
         window.title("Session startup")
         window.transient(self.root)
-        window.geometry("820x300")
+        window.geometry("820x350")
         body = ttk.Frame(window, padding=12)
         body.pack(fill="both", expand=True)
         ttk.Label(body, text=(
@@ -1112,6 +1237,9 @@ class VectorApp:
             ttk.Button(body, text="Browse…",
                        command=lambda v=target: self._browse_launch_target(v)).grid(
                            row=row, column=3, sticky="e")
+        ttk.Checkbutton(body, text="Automatically start listener, connect Primary ReStim and resume output",
+                        variable=self.automatic_ready, command=self._save_settings).grid(
+                            row=4, column=0, columnspan=4, sticky="w", pady=6)
         ttk.Label(body, textvariable=self.startup_status, foreground="#555").grid(
             row=5, column=0, columnspan=4, sticky="w", pady=(12, 6))
         buttons = ttk.Frame(body)
@@ -1201,6 +1329,21 @@ class VectorApp:
         threading.Thread(target=worker, name="vector-session-startup", daemon=True).start()
 
     def _auto_start_session(self) -> None:
+        if self.automatic_ready.get():
+            self.start_listener()
+            self.resume()
+            host, port = self.restim_host.get().strip(), int(self.restim_port.get())
+            self._automatic_ready_stop.clear()
+            def connect_when_ready():
+                while not self._automatic_ready_stop.is_set():
+                    if not self.restim.connected:
+                        try:
+                            self.restim.connect(host, port)
+                        except OSError as exc:
+                            self._set_restim_status(f"Waiting for ReStim: {exc}")
+                    if self._automatic_ready_stop.wait(2.0):
+                        break
+            threading.Thread(target=connect_when_ready, name="vector-auto-connect", daemon=True).start()
         if self.auto_start_mfp.get() or self.auto_start_restim.get() or self.auto_start_prostate.get():
             self._launch_session_apps()
 
@@ -1681,6 +1824,11 @@ class VectorApp:
             at_time: float | None = None
             ) -> tuple[tuple[float, float, float, float], str, str, float, str]:
         """Build logical E1-E4 values, then apply physical sequence mapping."""
+        if self.four_phase_spatial_model.get().startswith("Howl "):
+            logical = (self._howl_frame.electrodes if self._howl_frame else
+                       howl_positional(path_l0, self.howl_width.get()))
+            order = self.electrode_order.get()
+            return map_electrode_order(logical, order), order, order, 0.0, "howl"
         if self.four_phase_spatial_model.get() == "Depth spread":
             logical = depth_spread(
                 path_l0, self.four_phase_tip_retention.get(),
@@ -1920,6 +2068,9 @@ class VectorApp:
     def _on_bottom_focus_changed(self, *_args) -> None:
         if hasattr(self, "_bottom_focus_history"):
             self._bottom_focus_history.select(self.director_bottom_focus.get())
+        if hasattr(self, "_bottom_focus_transition"):
+            self._bottom_focus_transition.select(
+                self.director_bottom_focus.get(), duration=1.0)
 
     def _focus_history_state(self) -> dict:
         top = self._top_focus_history.snapshot()
@@ -1927,6 +2078,8 @@ class VectorApp:
         bottom["strength"] = round(float(self.bottom_focus_strength.get()), 3)
         bottom["alpha_window"] = [round(x, 3) for x in bottom_focus_window(
             self.director_bottom_focus.get())]
+        if hasattr(self, "_bottom_focus_transition"):
+            bottom["transition"] = self._bottom_focus_transition.snapshot()
         top["strength"] = round(float(self.top_focus_strength.get()), 3)
         top["nominal_ceiling"] = round(float(self.top_focus_nominal_ceiling.get()), 3)
         return {"top": top, "bottom": bottom}
@@ -2127,6 +2280,25 @@ class VectorApp:
                 "horizons_seconds": [1, 10, 30],
                 "status": "full-funscript lookahead; MFP pattern-sync or internal manual preview clock",
             },
+            "custom_events": {
+                "enabled": bool(self.director_events_enabled.get()),
+                "endpoint": "/v1/event/trigger",
+                "cancel_endpoint": "/v1/event/cancel",
+                "duration_seconds": {
+                    "minimum": self.DIRECTOR_EVENT_MIN_SECONDS,
+                    "maximum": self.DIRECTOR_EVENT_MAX_SECONDS,
+                },
+                "available": [
+                    {
+                        "id": event_id,
+                        "label": details[0],
+                        "description": details[1],
+                        "default_duration_seconds": details[2],
+                    }
+                    for event_id, details in self.DIRECTOR_EVENT_CATALOG.items()
+                ],
+                "status": "operator opt-in; named recipes and duration bounds are enforced by Vector",
+            },
             "spatial_focus_note": "For best effect, ensure electrode strength is properly calibrated in ReStim for the active electrode configuration.",
             "signal_authority": {
                 "axis_control": {
@@ -2163,6 +2335,25 @@ class VectorApp:
         })
         return snapshot
 
+    def _director_event_state(self) -> dict:
+        now = time.monotonic()
+        active = self.event_engine.active_trigger_names(now)
+        recent = []
+        for entry in reversed(self._director_event_history):
+            age = max(0.0, now - float(entry["started_at"]))
+            recent.append({
+                "event": entry["event"],
+                "duration_seconds": entry["duration_seconds"],
+                "age_seconds": round(age, 3),
+                "active": entry["event"] in active and age < float(entry["duration_seconds"]),
+            })
+        return {
+            "enabled": bool(self.director_events_enabled.get()),
+            "active": active,
+            "pending_count": self.event_engine.pending_trigger_count,
+            "recent": recent[:6],
+        }
+
     def _director_state(self) -> dict:
         diag = self.engine.diagnostics()
         live_axes = sorted(self.axis_router.live_axes())
@@ -2180,6 +2371,7 @@ class VectorApp:
         return {
             "ok": True,
             "vector_version": __version__,
+            "pressure_control": self.pressure_control.snapshot(),
             "running": control["engine_state"] == "Running" and control["output_enabled"],
             "engine_state": control["engine_state"],
             "input_state": "Receiving" if mfp_receiving else "Idle",
@@ -2216,14 +2408,12 @@ class VectorApp:
             },
             "future": self.engine.director_forecast(),
             "timeline": self.timeline.snapshot(),
+            "custom_events": self._director_event_state(),
             "semantic": {
                 "texture": self._active_director_profile("texture"),
                 "primary_spatial": {
-                    "id": ("top_depth_spread" if self.four_phase_spatial_model.get() == "Depth spread"
-                           else "top_moving_focus"),
-                    "label": (self.PRIMARY_SPATIAL_NAMES["top_depth_spread"]
-                              if self.four_phase_spatial_model.get() == "Depth spread"
-                              else self.PRIMARY_SPATIAL_NAMES["top_moving_focus"]),
+                    "id": self._primary_spatial_choice(),
+                    "label": self.PRIMARY_SPATIAL_NAMES[self._primary_spatial_choice()],
                 },
                 "secondary_spatial": {
                     "id": "bottom_focus",
@@ -2271,6 +2461,33 @@ class VectorApp:
             "controller": self._director_controller_state(),
             "capabilities": self._director_capabilities(),
         }
+
+    def _trigger_director_event(self, body: dict) -> tuple[int, dict]:
+        if not self.director_events_enabled.get():
+            return 409, {"ok": False, "error": "Director custom events are disabled in Vector"}
+        event_id = str(body.get("event", "")).strip()
+        if event_id not in self.DIRECTOR_EVENT_CATALOG:
+            return 400, {"ok": False, "error": "event is not in the curated catalogue"}
+        default_duration = self.DIRECTOR_EVENT_CATALOG[event_id][2]
+        try:
+            duration = float(body.get("duration_seconds", default_duration))
+        except (TypeError, ValueError):
+            return 400, {"ok": False, "error": "duration_seconds must be a number"}
+        if not self.DIRECTOR_EVENT_MIN_SECONDS <= duration <= self.DIRECTOR_EVENT_MAX_SECONDS:
+            return 400, {
+                "ok": False,
+                "error": (f"duration_seconds must be between {self.DIRECTOR_EVENT_MIN_SECONDS:g} "
+                          f"and {self.DIRECTOR_EVENT_MAX_SECONDS:g}"),
+            }
+        now = time.monotonic()
+        params = dict(self.DIRECTOR_EVENT_PARAM_OVERRIDES.get(event_id, {}))
+        params["duration_ms"] = int(round(duration * 1000.0))
+        if not self.event_engine.schedule_trigger(event_id, params, now):
+            return 500, {"ok": False, "error": "event recipe could not be expanded"}
+        entry = {"event": event_id, "started_at": now,
+                 "duration_seconds": round(duration, 3)}
+        self._director_event_history.append(entry)
+        return 202, {"ok": True, "accepted": True, **entry}
 
     def _drain_director_requests(self) -> None:
         while True:
@@ -2323,6 +2540,12 @@ class VectorApp:
                 elif request.method == "POST" and request.path == "/v1/generated-motion/authored":
                     request.status = 200
                     request.response = {"ok": True, "motion_source": self.generated_motion.authored()}
+                elif request.method == "POST" and request.path == "/v1/event/trigger":
+                    request.status, request.response = self._trigger_director_event(request.body)
+                elif request.method == "POST" and request.path == "/v1/event/cancel":
+                    self.event_engine.clear_triggers()
+                    request.status = 200
+                    request.response = {"ok": True, "state": "custom events cancelled"}
                 elif request.method == "POST" and request.path == "/v1/semantic/texture":
                     label = str(request.body.get("texture", "")).strip()
                     if label not in self.TEXTURE_PROFILE_NAMES:
@@ -2480,6 +2703,11 @@ class VectorApp:
             self._stop_director()
         self._save_settings()
 
+    def _director_events_enabled_changed(self) -> None:
+        if not self.director_events_enabled.get():
+            self.event_engine.clear_triggers()
+        self._save_settings()
+
     def _auto_start_director(self) -> None:
         if self.director_enabled.get():
             self._start_director()
@@ -2506,18 +2734,22 @@ class VectorApp:
         ttk.Spinbox(body, from_=1024, to=65535, textvariable=self.director_port, width=8).grid(row=2, column=3, padx=6)
         ttk.Label(body, textvariable=self.director_status,
                   font=("TkDefaultFont", 10, "bold")).grid(row=3, column=0, columnspan=4, sticky="w", pady=(10, 4))
+        ttk.Checkbutton(
+            body, text="Allow curated Director custom events",
+            variable=self.director_events_enabled, command=self._director_events_enabled_changed,
+        ).grid(row=4, column=0, columnspan=4, sticky="w", pady=(4, 2))
         ttk.Label(body, text=("v0.5 commands: state/capabilities, Preset A/B/Baseline, Rolling Variety, Neutral, "
-                              "semantic Texture/Spatial Focus/Variation, plus bounded Top/Bottom Spatial Gain."),
-                  foreground="#555", wraplength=650, justify="left").grid(row=4, column=0, columnspan=4, sticky="w")
+                              "semantic Texture/Spatial Focus/Variation, bounded Spatial Gain, and curated events."),
+                  foreground="#555", wraplength=650, justify="left").grid(row=5, column=0, columnspan=4, sticky="w")
         ttk.Label(body, text=(
             "For best Spatial Focus effect, ensure electrode strength is properly calibrated in ReStim "
             "for the active electrode configuration. Spatial Gain is bounded and smoothly ramped by Vector."),
             foreground="#8a5a00", wraplength=650, justify="left").grid(
-                row=5, column=0, columnspan=4, sticky="w", pady=(6, 12))
-        ttk.Button(body, text="Semantic profiles", command=self.show_director_semantic_window).grid(row=6, column=0, sticky="w")
-        ttk.Button(body, text="Funscript timeline...", command=self.show_timeline_window).grid(row=6, column=1, sticky="w", padx=6)
-        ttk.Button(body, text="Save", command=self._save_settings).grid(row=6, column=2, sticky="w", padx=6)
-        ttk.Button(body, text="Close", command=window.destroy).grid(row=6, column=3, sticky="e")
+                row=6, column=0, columnspan=4, sticky="w", pady=(6, 12))
+        ttk.Button(body, text="Semantic profiles", command=self.show_director_semantic_window).grid(row=7, column=0, sticky="w")
+        ttk.Button(body, text="Funscript timeline...", command=self.show_timeline_window).grid(row=7, column=1, sticky="w", padx=6)
+        ttk.Button(body, text="Save", command=self._save_settings).grid(row=7, column=2, sticky="w", padx=6)
+        ttk.Button(body, text="Close", command=window.destroy).grid(row=7, column=3, sticky="e")
 
     def show_timeline_window(self) -> None:
         if self._timeline_window is not None and self._timeline_window.winfo_exists():
@@ -2841,13 +3073,25 @@ class VectorApp:
             self.apply_config()
         self._save_settings()
 
+    PRIMARY_SPATIAL_MODELS = {
+        "top_moving_focus": "Moving focus",
+        "top_depth_spread": "Depth spread",
+        "top_howl_positional": "Howl Positional",
+        "top_howl_dynamic": "Howl Dynamic",
+    }
+
+    def _primary_spatial_choice(self) -> str:
+        model = self.four_phase_spatial_model.get()
+        return next((key for key, value in self.PRIMARY_SPATIAL_MODELS.items()
+                     if value == model), "top_moving_focus")
+
+    def _sync_primary_spatial(self, *_args) -> None:
+        self.director_primary_spatial.set(self._primary_spatial_choice())
+
     def _set_director_primary_spatial(self, choice: str) -> None:
-        if choice == "top_moving_focus":
-            self.four_phase_spatial_model.set("Moving focus")
-        elif choice == "top_depth_spread":
-            self.four_phase_spatial_model.set("Depth spread")
-        else:
+        if choice not in self.PRIMARY_SPATIAL_MODELS:
             raise ValueError("unknown primary spatial choice")
+        self.four_phase_spatial_model.set(self.PRIMARY_SPATIAL_MODELS[choice])
         self.director_primary_spatial.set(choice)
         self.apply_config()
         self._save_settings()
@@ -3209,7 +3453,22 @@ class VectorApp:
         if abs(motion_delta) > 0.0005:
             self._motion_send_direction = 1 if motion_delta > 0 else -1
         self._motion_send_last_l0 = sample.output_l0
-        path_l0 = self._spatial_path(sample.output_l0, variation_depth)
+        howl_mode = self.four_phase_spatial_model.get().startswith("Howl ")
+        match_intensity = self.match_spatial_intensity.get()
+        if howl_mode or match_intensity:
+            source_l0 = 1-sample.raw_l0 if self.four_phase_invert.get() else sample.raw_l0
+            self._howl_frame = self._howl_converter.sample(
+                sample.calculated_at, source_l0,
+                self.four_phase_spatial_model.get() if howl_mode else "Howl Positional",
+                self.howl_width.get(), self.howl_pan.get(),
+                self.howl_boost.get(), self.howl_sigma.get(),
+                self.howl_balance_a.get(), self.howl_balance_b.get(),
+                self.howl_scaling.get(), self.howl_position_strength.get())
+            path_l0 = source_l0 if howl_mode else self._spatial_path(sample.output_l0, variation_depth)
+        else:
+            self._howl_converter = LiveConversion()
+            self._howl_frame = None
+            path_l0 = self._spatial_path(sample.output_l0, variation_depth)
         delta = path_l0 - self._four_phase_send_last_l0
         if abs(delta) > 0.0005:
             self._four_phase_send_direction = 1 if delta > 0 else -1
@@ -3220,7 +3479,7 @@ class VectorApp:
             sample.stroke_progress, variation_depth, sample.due_at)
         self._four_phase_history.append((sample.due_at, electrodes))
         target_delay = 0.0
-        if self.four_phase_group_delay.get() and profile_kind != "depth spread":
+        if self.four_phase_group_delay.get() and profile_kind not in ("depth spread", "howl"):
             target_delay = min(.300, max(-.300,
                 self.four_phase_group_delay_ms.get() / 1000.0)) * variation_depth
         previous_time = self._four_phase_group_delay_last_time
@@ -3232,7 +3491,7 @@ class VectorApp:
             target_delay - self._four_phase_effective_group_delay) * blend
         if abs(target_delay) <= 1e-9 and abs(self._four_phase_effective_group_delay) < 1e-5:
             self._four_phase_effective_group_delay = 0.0
-        if profile_kind == "depth spread":
+        if profile_kind in ("depth spread", "howl"):
             self._four_phase_effective_group_delay = 0.0
         else:
             electrodes = apply_group_delay(
@@ -3254,6 +3513,10 @@ class VectorApp:
                           self.four_phase_volume_headroom.get() * wave * variation_depth)
         primary_volume = min(1.0, max(0.0,
             ceiling * sample.volume / max(self.volume.get(), 1e-9)))
+        if match_intensity:
+            primary_volume = ceiling * self._howl_frame.matched_volume if sample.volume > 0 else 0.0
+        elif howl_mode:
+            primary_volume = ceiling * self._howl_frame.volume if sample.volume > 0 else 0.0
         if self.four_phase_stroke_phase_texture.get():
             configured = (self.motion_rising_volume_multiplier.get()
                           if self._motion_send_direction > 0
@@ -3295,17 +3558,60 @@ class VectorApp:
                     authored_overrides[name] = value
             if "V0" in authored_overrides:
                 authored_overrides["V0"] = apply_gain(authored_overrides["V0"], top_gain)
+        focused_alpha_prostate = apply_bottom_focus_window(
+            sample.alpha_prostate,
+            self._bottom_focus_transition.window(now=sample.due_at),
+            strength=self.bottom_focus_strength.get())
+        bottom_volume = apply_gain(sample.volume_prostate, bottom_gain)
+        primary_alpha = sample.alpha
+        primary_beta = sample.beta
+        primary_frequency = sample.frequency
+        primary_pulse_frequency = sample.pulse_frequency
+        primary_pulse_width = sample.pulse_width
+        if howl_mode and self.howl_pulse.get():
+            # These normalized axes require the ranges displayed in the UI.
+            low = min(100.0, max(1.0, self.howl_freq_min.get()))
+            high = min(100.0, max(low, self.howl_freq_max.get()))
+            hz = low + (high-low) * self._howl_frame.frequency
+            primary_pulse_frequency = (hz-1)/99
+            cycles = round(5 + min(1.0, max(0.0, self.howl_thump.get()))*15*(1-(min(50, max(1, hz))-1)/49)**1.5)
+            primary_pulse_width = (cycles-3)/17
+        if self.director_events_enabled.get():
+            event_base = authored_overrides or {}
+            event_values = self.event_engine.apply_triggers(sample.due_at, {
+                "volume": event_base.get("V0", primary_volume),
+                "volume-prostate": bottom_volume,
+                "frequency": event_base.get("C0", primary_frequency),
+                "pulse_frequency": event_base.get("P0", primary_pulse_frequency),
+                "pulse_width": event_base.get("P1", primary_pulse_width),
+                "alpha": event_base.get("L0", primary_alpha),
+                "beta": event_base.get("L1", primary_beta),
+                "e1": event_base.get("E1", electrodes[0]),
+                "e2": event_base.get("E2", electrodes[1]),
+                "e3": event_base.get("E3", electrodes[2]),
+                "e4": event_base.get("E4", electrodes[3]),
+                "sensor_suppression": event_base.get("S1", 0.0),
+            })
+            primary_volume = event_values["volume"]
+            bottom_volume = event_values["volume-prostate"]
+            primary_frequency = event_values["frequency"]
+            primary_pulse_frequency = event_values["pulse_frequency"]
+            primary_pulse_width = event_values["pulse_width"]
+            primary_alpha = event_values["alpha"]
+            primary_beta = event_values["beta"]
+            electrodes = tuple(event_values[f"e{i}"] for i in range(1, 5))
+            if authored_overrides:
+                authored_overrides = dict(authored_overrides)
+                for event_axis, authored_axis in AXIS_AUTHORED.items():
+                    if authored_axis in authored_overrides:
+                        authored_overrides[authored_axis] = event_values[event_axis]
         primary_args = (
-            sample.alpha, sample.beta, tuple(electrodes), primary_volume, sample.frequency,
-            sample.pulse_frequency, sample.pulse_rise_time, sample.pulse_width)
+            primary_alpha, primary_beta, tuple(electrodes), primary_volume, primary_frequency,
+            primary_pulse_frequency, sample.pulse_rise_time, primary_pulse_width)
         primary_overrides = dict(authored_overrides) if authored_overrides else None
         self.restim_sender.submit(
             lambda args=primary_args, overrides=primary_overrides:
                 self.restim.send_primary(*args, overrides=overrides))
-        focused_alpha_prostate = apply_bottom_focus(
-            sample.alpha_prostate, self.director_bottom_focus.get(),
-            strength=self.bottom_focus_strength.get())
-        bottom_volume = apply_gain(sample.volume_prostate, bottom_gain)
         prostate_args = (
             focused_alpha_prostate, sample.beta_prostate, bottom_volume,
             sample.frequency, sample.pulse_frequency, sample.pulse_width,
@@ -3325,9 +3631,12 @@ class VectorApp:
     def _receive_generated_l0(self, value: float, interval_ms: int = 0,
                               received_at: float | None = None) -> None:
         now = time.monotonic() if received_at is None else float(received_at)
-        self.engine.receive_l0(self._tempo_l0(value, now), interval_ms, now)
+        self.engine.receive_l0(
+            self._tempo_l0(value, now), interval_ms, now,
+            stroke_bounds=self.generated_motion.stroke_bounds(now))
 
     def neutral(self) -> None:
+        self.event_engine.clear_triggers()
         self.apply_config()
         self._reset_four_phase_group_delay()
         self._motion_send_last_l0 = 0.5
@@ -3348,11 +3657,15 @@ class VectorApp:
             max_age_seconds=2.0)
 
     def resume(self) -> None:
+        self.pressure_control.target()
+        if self.pressure_control.fault:
+            return
         self.apply_config()
         self._reset_four_phase_group_delay()
         self.engine.resume()
 
     def stop(self) -> None:
+        self.event_engine.clear_triggers()
         self.generated_motion.authored()
         self._reset_four_phase_group_delay()
         self._motion_send_last_l0 = 0.5
@@ -3377,6 +3690,19 @@ class VectorApp:
         self._four_phase_group_delay_last_time = None
 
     def _refresh(self) -> None:
+        self.pressure_control.target()
+        if self.pressure_control.fault and not self._pressure_fault_seen:
+            self._pressure_fault_seen = True
+            self.stop()
+        elif not self.pressure_control.fault:
+            self._pressure_fault_seen = False
+        # Worker status callbacks must never wait for Tk while holding a socket lock.
+        while True:
+            try:
+                variable, text = self._status_updates.get_nowait()
+            except queue.Empty:
+                break
+            variable.set(text)
         self._drain_controller_events()
         self._drain_director_requests()
         # Keep direct VLC/MPC timeline clocks live even when the timeline window
@@ -3465,7 +3791,14 @@ class VectorApp:
             self._four_phase_direction = 1 if delta > 0 else -1
         self._four_phase_last_l0 = path_l0
         depth_mode = self.four_phase_spatial_model.get() == "Depth spread"
-        if depth_mode:
+        if self.four_phase_spatial_model.get().startswith("Howl "):
+            with self._four_phase_live_lock:
+                signed = self._four_phase_live_output[0]
+            self.four_phase_effective_crossover_width.set("Howl")
+            self.four_phase_stroke_phase_live.set("Howl conversion")
+            self.four_phase_model_live.set(self.four_phase_spatial_model.get() +
+                ": raw L0 conversion; static electrode sequence; crossover and delay bypassed")
+        elif depth_mode:
             signed = depth_spread(
                 path_l0, self.four_phase_tip_retention.get(),
                 self.four_phase_spread_softness.get(),
@@ -3600,10 +3933,12 @@ class VectorApp:
         self._last_health_log_at = now
 
     def close(self) -> None:
+        self._automatic_ready_stop.set()
         self.generated_motion.close()
         self._save_settings()
         self.xinput.close()
         self.engine.close()
+        self.pressure_control.close()
         self.listener.stop()
         self.restim_sender.close()
         self.prostate_sender.close()

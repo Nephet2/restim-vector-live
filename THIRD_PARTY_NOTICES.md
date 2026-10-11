@@ -17,7 +17,14 @@ for compatibility with the following MIT-licensed projects.
 - Copyright (c) 2023 diglet48
 - License: MIT
 
-The MIT license text applicable to both upstream projects is reproduced below:
+## Senorgif33 restim-vector-live fork
+
+- Source: https://github.com/Senorgif33/restim-vector-live
+- Custom-event reference revision: `f3978be94e7cfe0296184f0c9920d0962015d9ec`
+- Event definitions include recipe credits recorded in `vector1a/event_definitions.yml`
+- License: MIT
+
+The MIT license text applicable to these upstream projects is reproduced below:
 
 > Permission is hereby granted, free of charge, to any person obtaining a copy
 > of this software and associated documentation files (the "Software"), to deal
@@ -36,3 +43,33 @@ The MIT license text applicable to both upstream projects is reproduced below:
 > LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 > OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 > SOFTWARE.
+
+
+## Howl conversion
+
+Electrode panning, FOC constraint projection, amplitude and frequency formulas
+are adapted from Howl by Amethyst-Sysadmin: https://github.com/Amethyst-Sysadmin/Howl
+Upstream declares original code MIT licensed and prohibits distributing derived
+software under the name Howl or a similar name. This application remains Vector 1A.
+
+MIT License
+
+Copyright (c) Amethyst-Sysadmin and Howl contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

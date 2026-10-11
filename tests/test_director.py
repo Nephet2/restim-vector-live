@@ -194,3 +194,13 @@ def test_director_server_post_modifier_restore():
 def test_director_server_post_modifier_stroke_range():
     payload = _post_round_trip("/v1/modifier/stroke-range", {"action": "narrower"})
     assert payload["action"] == "narrower"
+
+
+def test_director_server_post_custom_event():
+    payload = _post_round_trip(
+        "/v1/event/trigger", {"event": "mcb_tease", "duration_seconds": 8})
+    assert payload["event"] == "mcb_tease"
+
+
+def test_director_server_post_cancel_events():
+    assert _post_round_trip("/v1/event/cancel", {})["ok"] is True
