@@ -9,6 +9,7 @@ import struct
 import threading
 import time
 from collections import deque
+from contextlib import contextmanager
 from typing import Callable
 
 from .tcode import format_command, parse_message
@@ -319,7 +320,8 @@ class LatestFrameDispatcher:
 
 class _ReconnectClient:
     def __init__(self, status: Callable[[str], None]) -> None:
-        self.status, self._socket = status, None
+        self._status_callback, self._socket = status, None
+        self._status_context = threading.local()
         self._lock = threading.Lock()
         self._target: tuple[str, int] | None = None
         self._retry_at = 0.0
@@ -335,11 +337,36 @@ class _ReconnectClient:
                                          name="restim-reconnect", daemon=True)
         self._monitor.start()
 
+    def status(self, message: str) -> None:
+        pending = getattr(self._status_context, "pending", None)
+        if pending is None:
+            self._status_callback(message)
+        else:
+            pending.append(message)
+
+    @contextmanager
+    def _locked(self):
+        """Defer callbacks until socket state is unlocked.
+
+        A UI callback can read health() or synchronously marshal to Tk. Calling
+        it while holding the socket lock can deadlock both threads.
+        """
+        pending = []
+        self._lock.acquire()
+        self._status_context.pending = pending
+        try:
+            yield
+        finally:
+            del self._status_context.pending
+            self._lock.release()
+            for message in pending:
+                self._status_callback(message)
+
     @property
     def connected(self) -> bool: return self._socket is not None
 
     def health(self) -> dict[str, object]:
-        with self._lock:
+        with self._locked():
             now = time.monotonic()
             return {
                 "connected": self._socket is not None,
@@ -363,14 +390,14 @@ class _ReconnectClient:
         self._target = (host, port)
         self._manual_disconnect = False
         try:
-            with self._lock:
+            with self._locked():
                 self._connect_now()
         except OSError:
             self._retry_at = time.monotonic() + 1.0
             raise
 
     def disconnect(self, manual: bool = True) -> None:
-        with self._lock:
+        with self._locked():
             if self._socket:
                 try: self._socket.close()
                 except OSError: pass
@@ -396,7 +423,7 @@ class _ReconnectClient:
     def _monitor_connection(self) -> None:
         """Reconnect independently of output flow and notice silent peer closure."""
         while not self._closed.wait(0.5):
-            with self._lock:
+            with self._locked():
                 if self._manual_disconnect or not self._target:
                     continue
                 if self._socket is None:
@@ -441,7 +468,7 @@ class ReStimClient(_ReconnectClient):
         for axis, value in (("C0", frequency), ("P0", pulse_frequency),
                             ("P3", pulse_rise_time), ("P1", pulse_width)):
             if value is not None: commands.append(format_command(axis, value))
-        with self._lock:
+        with self._locked():
             if not self._ensure_connected(): return
             try:
                 self._socket.sendall((" ".join(commands) + "\n").encode("ascii"))
@@ -523,7 +550,7 @@ class ReStimWebSocketClient(_ReconnectClient):
             neutral = " ".join(token for token in neutral.split()
                                if token[:2].upper() not in suppressed)
 
-        with self._lock:
+        with self._locked():
             if not self._ensure_connected():
                 return False
             try:

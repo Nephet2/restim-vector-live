@@ -73,3 +73,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Alpha81 development acknowledgements
+
+Thanks to Senorgif33 (https://github.com/Senorgif33/restim-vector-live) for the socket-status callback lock-inversion finding and Windows executable distribution example. Alpha81 implements callback deferral on the alpha80 networking baseline and an independent portable executable build.

@@ -14,3 +14,5 @@ backups/
 .codex-backups/
 settings-howl.json
 vector1a/civet-pressure.json
+
+dist-exe/
