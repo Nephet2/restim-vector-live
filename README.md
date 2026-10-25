@@ -1,6 +1,6 @@
 # Vector 1A
 
-**Windows app:** download the `windows-exe.zip` from Releases, extract the whole folder, and run the executable. No Python installation is required. Keep `_internal` beside the executable. Both editions keep settings in `profile/Vector1A/settings.json` beside the launcher. See [alpha81 release notes](RELEASE_NOTES_1.6.0-alpha81.md) for upgrade details.
+**Windows app:** download the `windows-exe.zip` from Releases, extract the whole folder, and run the executable. No Python installation is required. Keep `_internal` beside the executable. Both editions keep settings in `profile/Vector1A/settings.json` beside the launcher. See [alpha81 release notes](RELEASE_NOTES_1.6.0-alpha82.md) for upgrade details.
 
 
 Vector 1A is a standalone live bridge from MultiFunPlayer T-code to one or two ReStim
@@ -9,7 +9,7 @@ ordinary positional `L0` stream, Vector remains the deterministic motion generat
 MFP supplies a clearly authored ReStim axis set, Vector can automatically pass those axes
 through on the same delayed timeline and generate only the missing axes.
 
-Current development build: **1.6.0-alpha81**.
+Current development build: **1.6.0-alpha82**.
 
 See [Alpha79 release notes](RELEASE_NOTES_1.6.0-alpha79.md) for Howl conversion,
 intensity matching, optional TCode output, automatic ready startup and Civet pressure controls.

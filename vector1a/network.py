@@ -29,6 +29,7 @@ class MFPListener:
         self._last_received: float | None = None
         self._last_transport = ""
         self._transport_live = {"tcp": False, "udp": False}
+        self._transport_errors = {}
         self._raw_lock = threading.Lock()
         self._raw_packets = deque(maxlen=80)
         self._client_lock = threading.RLock()
@@ -38,6 +39,7 @@ class MFPListener:
         self.stop()
         self._last_received = None
         self._last_transport = ""
+        self._transport_errors.clear()
         self._run.set()
         for transport in ("tcp", "udp"):
             thread = threading.Thread(target=self._supervise, args=(transport, host, port),
@@ -64,10 +66,17 @@ class MFPListener:
     def connection_label(self) -> str:
         if not self._run.is_set():
             return "Disconnected"
+        errors = tuple(self._transport_errors)
+        unavailable = ", ".join(name.upper() for name in errors)
         if self._last_received is None:
-            return "Listening"
-        age = time.monotonic() - self._last_received
-        return f"Receiving ({self._last_transport})" if age < 2.0 else f"Listening; no L0 for {age:.1f} s"
+            label = "Listening"
+        else:
+            age = time.monotonic() - self._last_received
+            label = (f"Receiving ({self._last_transport})" if age < 2.0
+                     else f"Listening; no L0 for {age:.1f} s")
+        if unavailable:
+            label += f"; {unavailable} recovering (see Connection log)"
+        return label
 
     def health(self) -> dict[str, object]:
         """Return read-only listener health without treating a quiet script as failure."""
@@ -92,6 +101,7 @@ class MFPListener:
                 (self._tcp_session if transport == "tcp" else self._udp_session)(host, port)
             except Exception as exc:
                 if self._run.is_set():
+                    self._transport_errors[transport] = str(exc)
                     self.status(f"MFP {transport.upper()} recovering: {exc}")
             finally:
                 self._transport_live[transport] = False
@@ -127,6 +137,7 @@ class MFPListener:
             server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             server.bind((host, port)); server.listen(4); server.settimeout(0.5)
             self._transport_live["tcp"] = True
+            self._transport_errors.pop("tcp", None)
             while self._run.is_set():
                 try: client, _ = server.accept()
                 except socket.timeout: continue
@@ -149,8 +160,11 @@ class MFPListener:
         try:
             self._stream_client(client)
         except Exception as exc:
-            if self._run.is_set():
-                self.status(f"MFP stream recovered: {type(exc).__name__}: {exc}")
+            # Closing a superseded stream is deliberate, not a new failure.
+            with self._client_lock:
+                active = self._active_client is client
+            if self._run.is_set() and active:
+                self.status(f"MFP stream disconnected: {type(exc).__name__}: {exc}")
         finally:
             with self._client_lock:
                 if self._active_client is client:
@@ -209,6 +223,7 @@ class MFPListener:
             udp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             udp.bind((host, port)); udp.settimeout(0.5)
             self._transport_live["udp"] = True
+            self._transport_errors.pop("udp", None)
             while self._run.is_set():
                 try: data, _ = udp.recvfrom(65535)
                 except socket.timeout: continue

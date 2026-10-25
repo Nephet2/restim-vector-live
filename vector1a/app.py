@@ -61,8 +61,8 @@ class CollapsibleSection(ttk.Frame):
         self.button.grid(row=0, column=0, padx=(2, 5))
         ttk.Label(self, text=title, font=("TkDefaultFont", 10, "bold")) \
             .grid(row=0, column=1, sticky="w")
-        ttk.Label(self, textvariable=self.summary, foreground="#555") \
-            .grid(row=0, column=2, sticky="w", padx=12)
+        ttk.Label(self, textvariable=self.summary, foreground="#555", width=1, anchor="w") \
+            .grid(row=0, column=2, sticky="ew", padx=12)
         self.columnconfigure(2, weight=1)
         self.body = ttk.Frame(self, padding=(10, 6))
         self.body.grid(row=1, column=0, columnspan=3, sticky="nsew")
@@ -593,8 +593,8 @@ class VectorApp:
         return section.body
 
     def _build(self) -> None:
-        self.root.columnconfigure(0, weight=1)
-        self.root.columnconfigure(1, weight=1)
+        self.root.columnconfigure(0, weight=1, uniform="connection_panels")
+        self.root.columnconfigure(1, weight=1, uniform="connection_panels")
         self.root.rowconfigure(12, weight=1)
 
         toolbar = ttk.Frame(self.root, padding=(12, 6))
@@ -623,11 +623,13 @@ class VectorApp:
         ttk.Spinbox(mfp, from_=1, to=65535, textvariable=self.mfp_port, width=7).grid(row=0, column=3, padx=5)
         ttk.Button(mfp, text="Start listener", command=self.start_listener).grid(row=1, column=0, pady=8)
         ttk.Button(mfp, text="Stop listener", command=self.listener.stop).grid(row=1, column=1, pady=8)
-        ttk.Label(mfp, textvariable=self.mfp_status).grid(row=1, column=2, columnspan=2, sticky="w")
-        ttk.Label(mfp, textvariable=self.authored_axes_status, foreground="#555").grid(
-            row=2, column=0, columnspan=4, sticky="w", pady=(0, 4))
+        # Status text fills available space but never requests extra width.
+        self._mfp_status_label = ttk.Label(mfp, textvariable=self.mfp_status, width=1, anchor="w")
+        self._mfp_status_label.grid(row=2, column=0, columnspan=4, sticky="ew")
+        ttk.Label(mfp, textvariable=self.authored_axes_status, foreground="#555", width=1).grid(
+            row=3, column=0, columnspan=4, sticky="ew", pady=(0, 4))
         ttk.Label(mfp, text="TCP / UDP / WebSocket on the same port; WebSocket path: /ws",
-                  foreground="#555").grid(row=3, column=0, columnspan=4, sticky="w")
+                  foreground="#555").grid(row=4, column=0, columnspan=4, sticky="w")
 
         restim = self._frame("ReStim output", 0, 1)
         ttk.Label(restim, text="Primary WS").grid(row=0, column=0, sticky="w")
@@ -636,14 +638,16 @@ class VectorApp:
         ttk.Spinbox(restim, from_=1, to=65535, textvariable=self.restim_port, width=7).grid(row=0, column=3, padx=5)
         ttk.Button(restim, text="Connect", command=self.connect_restim).grid(row=1, column=0, pady=8)
         ttk.Button(restim, text="Disconnect", command=self.restim.disconnect).grid(row=1, column=1, pady=8)
-        ttk.Label(restim, textvariable=self.restim_status).grid(row=1, column=2, columnspan=3, sticky="w")
-        ttk.Label(restim, text="Prostate").grid(row=2, column=0, sticky="w")
-        ttk.Entry(restim, textvariable=self.prostate_host, width=16).grid(row=2, column=1, padx=5)
-        ttk.Label(restim, text="Port").grid(row=2, column=2, sticky="e")
-        ttk.Spinbox(restim, from_=1, to=65535, textvariable=self.prostate_port, width=7).grid(row=2, column=3, padx=5)
-        ttk.Button(restim, text="Connect", command=self.connect_prostate).grid(row=3, column=0, pady=6)
-        ttk.Button(restim, text="Disconnect", command=self.prostate_restim.disconnect).grid(row=3, column=1, pady=6)
-        ttk.Label(restim, textvariable=self.prostate_status).grid(row=3, column=2, columnspan=4, sticky="w")
+        self._restim_status_label = ttk.Label(restim, textvariable=self.restim_status, width=1, anchor="w")
+        self._restim_status_label.grid(row=2, column=0, columnspan=4, sticky="ew")
+        ttk.Label(restim, text="Prostate").grid(row=3, column=0, sticky="w")
+        ttk.Entry(restim, textvariable=self.prostate_host, width=16).grid(row=3, column=1, padx=5)
+        ttk.Label(restim, text="Port").grid(row=3, column=2, sticky="e")
+        ttk.Spinbox(restim, from_=1, to=65535, textvariable=self.prostate_port, width=7).grid(row=3, column=3, padx=5)
+        ttk.Button(restim, text="Connect", command=self.connect_prostate).grid(row=4, column=0, pady=6)
+        ttk.Button(restim, text="Disconnect", command=self.prostate_restim.disconnect).grid(row=4, column=1, pady=6)
+        self._prostate_status_label = ttk.Label(restim, textvariable=self.prostate_status, width=1, anchor="w")
+        self._prostate_status_label.grid(row=5, column=0, columnspan=4, sticky="ew")
 
         motion = self._frame("Motion", 1, 0, 2)
         ttk.Label(motion, text="Mode").grid(row=0, column=0, sticky="w")
@@ -3689,6 +3693,11 @@ class VectorApp:
         self._four_phase_effective_group_delay = 0.0
         self._four_phase_group_delay_last_time = None
 
+    def _refresh_mfp_status(self) -> None:
+        # Current listener health owns the banner; historical errors stay in
+        # Connection log and cannot pin a recovered input to an old warning.
+        self.mfp_status.set(self.listener.connection_label())
+
     def _refresh(self) -> None:
         self.pressure_control.target()
         if self.pressure_control.fault and not self._pressure_fault_seen:
@@ -3857,10 +3866,7 @@ class VectorApp:
             sequence_status = (f"{morph_source} morphing toward {morph_target} | "
                                f"{morph_amount * 100:.0f}%")
         self.four_phase_roles.set(sequence_status)
-        current = self.listener.connection_label()
-        if current.startswith(("Receiving", "Listening")):
-            if not self.mfp_status.get().startswith("MFP "):
-                self.mfp_status.set(current)
+        self._refresh_mfp_status()
         summaries = {
             "MultiFunPlayer input": f"{self.mfp_status.get()} | {self.mfp_host.get()}:{self.mfp_port.get()}",
             "ReStim output": f"Primary: {self.restim_status.get()} | Prostate: {self.prostate_status.get()}",
