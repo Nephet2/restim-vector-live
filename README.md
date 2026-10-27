@@ -1,15 +1,24 @@
 # Vector 1A
 
+**Windows app:** download the `windows-exe.zip` from Releases, extract the whole folder, and run the executable. No Python installation is required. Keep `_internal` beside the executable. Both editions keep settings in `profile/Vector1A/settings.json` beside the launcher. See [alpha83 release notes](RELEASE_NOTES_1.6.0-alpha83.md) for upgrade details.
+
+
+**Custom spatial curves:** In 4-phase mode select **Custom** under Spatial model and open **Edit Custom curves**. Shape each electrode curve, preview it in 3D, and save named profiles with descriptions. Changes to the active curves take effect live.
+
 Vector 1A is a standalone live bridge from MultiFunPlayer T-code to one or two ReStim
 instances. It does not require an AI model, GPU, cloud service, or voice stack. With an
 ordinary positional `L0` stream, Vector remains the deterministic motion generator. When
 MFP supplies a clearly authored ReStim axis set, Vector can automatically pass those axes
 through on the same delayed timeline and generate only the missing axes.
 
-Current development build: **1.6.0-alpha76**.
+Current development build: **1.6.0-alpha82**.
+
+See [Alpha79 release notes](RELEASE_NOTES_1.6.0-alpha79.md) for Howl conversion,
+intensity matching, optional TCode output, automatic ready startup and Civet pressure controls.
 
 **Upgrading from alpha49?** Read [Changes since alpha49](RELEASE_NOTES_1.6.0-alpha76.md)
 for the accumulated features, compatibility notes and new MFP WebSocket setup.
+For the curated custom-event addition, see [Alpha77](RELEASE_NOTES_1.6.0-alpha77.md).
 
 > [!CAUTION]
 > Commission with ReStim's graphical display and stimulation hardware
@@ -49,6 +58,9 @@ second after they begin.
 - Optional local Director API for captured Texture/Variation profiles, spatial focus
   and gain, script awareness, bounded modifiers and deterministic generated-motion plans.
   The API is disabled by default; no companion application is required.
+- Optional curated Director custom events layer temporary named recipes over the live
+  output. It has a separate operator opt-in, a fixed allowlist, bounded 2–30 second
+  duration, reduced Director amplitudes, live state reporting and immediate cancellation.
 - Script modifiers provide Stroke Range (0.30–1.50), Position Bias (±0.35),
   Curve Smoothing and temporary tempo windows with restoration. Accelerated authored
   tempo requires a loaded and synchronized funscript timeline.
@@ -165,7 +177,7 @@ second after they begin.
 - MultiFunPlayer
 - ReStim; a second instance is optional for prostate output
 
-Vector itself has no third-party Python package dependencies.
+Core Vector operation needs no third-party Python packages. Optional Civet Bluetooth support uses Bleak; install it with `python -m pip install .` from this folder.
 
 ## Quick start
 
@@ -434,3 +446,14 @@ Alpha70 also adds a temporary **Tempo Window** with 0.5x, 1x and 2x choices plus
 ## Alpha71: relative Stroke Range Director control
 
 The Director API can now request `narrower`, `wider`, or `restore` through `/v1/modifier/stroke-range`. Vector owns the deterministic 0.10 step, 0.30–1.50 bounds, 0–1 output clamp, and the configured transition. Position Bias is preserved while Stroke Range changes, so a targeted focus can be tightened or loosened incrementally without losing its location.
+
+## Alpha77 — curated Director custom events
+
+Alpha77 ports the fork's deterministic custom-event runtime and bundled recipe catalogue,
+then exposes ten reviewed recipes through the loopback Director API. Open **Director** and
+enable **Allow curated Director custom events** before a companion can trigger them.
+
+Vector accepts only the published allowlist, enforces a 2–30 second duration, uses reduced
+amplitudes for the stronger volume-modulation recipes, reports active/recent events in
+`GET /v1/state`, and clears every event on Cancel, Neutral or Stop. The countdown, extract,
+hard-stop, test and other experimental definitions remain unavailable to the Director API.
