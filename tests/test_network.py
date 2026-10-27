@@ -230,6 +230,7 @@ class NetworkTests(unittest.TestCase):
         server = socket.socket(); server.bind(("127.0.0.1", 0)); server.listen(2)
         port = server.getsockname()[1]
         reconnected = threading.Event()
+        client_recovered = threading.Event()
 
         def handshake(conn):
             request = b""
@@ -248,10 +249,16 @@ class NetworkTests(unittest.TestCase):
             reconnected.wait(1.0); second.close(); server.close()
 
         threading.Thread(target=serve, daemon=True).start()
-        client = ReStimWebSocketClient(lambda _: None)
+        def status(text):
+            if text.startswith("Reconnect succeeded"):
+                client_recovered.set()
+        client = ReStimWebSocketClient(status)
         try:
             client.connect("127.0.0.1", port)
             self.assertTrue(reconnected.wait(3.0))
+            # Server send completion precedes client handshake completion.
+            # Health reads intentionally do not wait on the socket lock now.
+            self.assertTrue(client_recovered.wait(3.0))
             health = client.health()
             self.assertGreaterEqual(health["reconnect_attempts"], 1)
             self.assertGreaterEqual(health["reconnect_successes"], 1)
