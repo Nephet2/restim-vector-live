@@ -1,3 +1,7 @@
+# Custom curves source preview (alpha82 base)
+
+This branch adds editable E1-E4 Custom spatial curves and named profiles to alpha82. It is a draft source preview, with no newly packaged Windows executable. See CUSTOM_PREVIEW.md for startup and validation status.
+
 # Vector 1A
 
 **Windows app:** download the `windows-exe.zip` from Releases, extract the whole folder, and run the executable. No Python installation is required. Keep `_internal` beside the executable. Both editions keep settings in `profile/Vector1A/settings.json` beside the launcher. See [alpha81 release notes](RELEASE_NOTES_1.6.0-alpha82.md) for upgrade details.

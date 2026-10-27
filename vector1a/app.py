@@ -10,6 +10,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from .engine import OutputSample, VectorEngine
 from .pressure_control import PressureControl
+from .custom_spatial import CurveEditor, make_preset, validate_curves, evaluate_curves, validate_profile, validated_profiles
 from .howl_conversion import LiveConversion, positional as howl_positional
 from .events import AXIS_AUTHORED, EventEngine
 from .motion import MotionMode, MotionParameters
@@ -135,6 +136,7 @@ class VectorApp:
         "top_depth_spread": "Top — Depth Spread",
         "top_howl_positional": "Top — Howl Positional",
         "top_howl_dynamic": "Top — Howl Dynamic",
+        "top_custom": "Top - Custom curves",
     }
     SECONDARY_SPATIAL_NAMES = {
         "bottom_focus": "Bottom Focus",
@@ -529,6 +531,10 @@ class VectorApp:
         self.xinput = XInputController(self._xinput_buttons_threaded, self._xinput_status_threaded,
                                        self._xinput_state_threaded)
         self.sections = {}
+        self._custom_curves = make_preset("Moving focus")
+        self._custom_profiles = {}
+        self._active_custom_profile_name = None
+        self._custom_curve_editor = None
         self._first_run = self._load_settings()
         self._sync_primary_spatial()
         self.four_phase_spatial_model.trace_add("write", self._sync_primary_spatial)
@@ -969,6 +975,8 @@ class VectorApp:
         ttk.Combobox(four_phase, textvariable=self.four_phase_spatial_model,
                      values=SPATIAL_MODELS, state="readonly", width=19).grid(
                          row=10, column=1, sticky="w")
+        ttk.Button(four_phase, text="Edit Custom curves", command=self.show_custom_curves).grid(
+            row=10, column=6, sticky="w", padx=(8, 0))
         ttk.Label(four_phase, text="Tip retention at full depth").grid(
             row=10, column=2, sticky="e", padx=(8, 4))
         ttk.Spinbox(four_phase, from_=0, to=1, increment=.05,
@@ -1819,6 +1827,50 @@ class VectorApp:
             direction_name = f"{direction_name} {phase_name}"
         return width, curve, sharpness, direction_name
 
+    def save_custom_profile(self, name: str, description: str) -> str:
+        name, profile = validate_profile(name, description, self._custom_curves)
+        if name not in self._custom_profiles and len(self._custom_profiles) >= 100:
+            raise ValueError("A maximum of 100 Custom profiles can be saved")
+        self._custom_profiles = {**self._custom_profiles, name: profile}
+        self._active_custom_profile_name = name
+        self._save_settings()
+        return name
+
+    def update_custom_profile_description(self, name: str, description: str) -> None:
+        if name not in self._custom_profiles:
+            raise ValueError("Select a saved Custom profile first")
+        _, profile = validate_profile(name, description, self._custom_profiles[name]["curves"])
+        self._custom_profiles = {**self._custom_profiles, name: profile}
+        self._save_settings()
+
+    def active_custom_profile(self):
+        if self.four_phase_spatial_model.get() != "Custom":
+            return None
+        name = getattr(self, "_active_custom_profile_name", None)
+        profile = self._custom_profiles.get(name)
+        if profile and profile["curves"] == self._custom_curves:
+            return {"name": name, "description": profile["description"]}
+        return None
+
+    def apply_custom_profile(self, name: str) -> None:
+        if name not in self._custom_profiles:
+            raise ValueError("Unknown Custom profile: " + str(name))
+        curves = validate_curves(self._custom_profiles[name]["curves"])
+        self._custom_curves = curves
+        self._active_custom_profile_name = name
+        self.four_phase_spatial_model.set("Custom")
+        self.apply_config()
+        self._save_settings()
+        editor = self._custom_curve_editor
+        if editor and editor.window.winfo_exists():
+            editor.sync_loaded_profile(name)
+
+    def show_custom_curves(self) -> None:
+        if self._custom_curve_editor and self._custom_curve_editor.window.winfo_exists():
+            self._custom_curve_editor.window.lift()
+            return
+        self._custom_curve_editor = CurveEditor(self)
+
     def _spatial_path(self, output_l0: float, variation_depth: float = 1.0) -> float:
         return 1.0 - output_l0 if self.four_phase_invert.get() else output_l0
 
@@ -1828,6 +1880,10 @@ class VectorApp:
             at_time: float | None = None
             ) -> tuple[tuple[float, float, float, float], str, str, float, str]:
         """Build logical E1-E4 values, then apply physical sequence mapping."""
+        if self.four_phase_spatial_model.get() == "Custom":
+            logical = evaluate_curves(self._custom_curves, path_l0)
+            order = self.electrode_order.get()
+            return map_electrode_order(logical, order), order, order, 0.0, "custom"
         if self.four_phase_spatial_model.get().startswith("Howl "):
             logical = (self._howl_frame.electrodes if self._howl_frame else
                        howl_positional(path_l0, self.howl_width.get()))
@@ -2248,6 +2304,9 @@ class VectorApp:
                                       if name in self._director_texture_profiles],
                     },
                     "primary_spatial": list(self.PRIMARY_SPATIAL_NAMES.keys()),
+                    "custom_spatial_profiles": [
+                        {"name": name, "description": profile["description"]}
+                        for name, profile in sorted(self._custom_profiles.items())],
                     "secondary_spatial": list(self.SECONDARY_SPATIAL_NAMES.keys()),
                     "variation": {
                         "all_labels": list(self.VARIATION_PROFILE_NAMES),
@@ -2418,6 +2477,7 @@ class VectorApp:
                 "primary_spatial": {
                     "id": self._primary_spatial_choice(),
                     "label": self.PRIMARY_SPATIAL_NAMES[self._primary_spatial_choice()],
+                    "custom_profile": self.active_custom_profile(),
                 },
                 "secondary_spatial": {
                     "id": "bottom_focus",
@@ -2567,6 +2627,18 @@ class VectorApp:
                     if choice not in self.PRIMARY_SPATIAL_NAMES:
                         request.status = 400
                         request.response = {"ok": False, "error": "unknown primary spatial choice"}
+                    elif request.body.get("custom_profile") is not None and choice != "top_custom":
+                        request.status = 400
+                        request.response = {"ok": False, "error": "custom_profile requires top_custom"}
+                    elif request.body.get("custom_profile") is not None:
+                        name = request.body.get("custom_profile")
+                        if not isinstance(name, str) or name not in self._custom_profiles:
+                            request.status = 404
+                            request.response = {"ok": False, "error": "unknown Custom profile"}
+                        else:
+                            self.apply_custom_profile(name)
+                            request.status = 200
+                            request.response = {"ok": True, "primary_spatial": choice, "custom_profile": name}
                     else:
                         self._set_director_primary_spatial(choice)
                         request.status = 200
@@ -2905,6 +2977,14 @@ class VectorApp:
                     getattr(self, name).set(saved[name])
                 except tk.TclError:
                     pass
+        if "custom_spatial_curves" in saved:
+            try:
+                self._custom_curves = validate_curves(saved["custom_spatial_curves"])
+            except (ValueError, TypeError):
+                self._custom_curves = make_preset("Moving focus")
+        self._custom_profiles = validated_profiles(saved.get("custom_spatial_profiles", {}))
+        active_custom = saved.get("active_custom_profile")
+        self._active_custom_profile_name = active_custom if isinstance(active_custom, str) and active_custom in self._custom_profiles else None
         routes = saved.get("authored_axis_routes", [])
         if isinstance(routes, list):
             self.axis_router.set_enabled_axes(routes)
@@ -2956,6 +3036,9 @@ class VectorApp:
 
     def _save_settings(self) -> None:
         values = {name: getattr(self, name).get() for name in self.SETTINGS_FIELDS}
+        values["custom_spatial_curves"] = self._custom_curves
+        values["custom_spatial_profiles"] = self._custom_profiles
+        values["active_custom_profile"] = self._active_custom_profile_name
         values["four_phase_presets"] = self._preset_slots
         values["authored_axis_routes"] = sorted(self.axis_router.enabled_axes())
         values["authored_routing_mode"] = self.authored_routing_mode.get()
@@ -3082,6 +3165,7 @@ class VectorApp:
         "top_depth_spread": "Depth spread",
         "top_howl_positional": "Howl Positional",
         "top_howl_dynamic": "Howl Dynamic",
+        "top_custom": "Custom",
     }
 
     def _primary_spatial_choice(self) -> str:
@@ -3483,7 +3567,7 @@ class VectorApp:
             sample.stroke_progress, variation_depth, sample.due_at)
         self._four_phase_history.append((sample.due_at, electrodes))
         target_delay = 0.0
-        if self.four_phase_group_delay.get() and profile_kind not in ("depth spread", "howl"):
+        if self.four_phase_group_delay.get() and profile_kind not in ("depth spread", "howl", "custom"):
             target_delay = min(.300, max(-.300,
                 self.four_phase_group_delay_ms.get() / 1000.0)) * variation_depth
         previous_time = self._four_phase_group_delay_last_time
@@ -3495,7 +3579,7 @@ class VectorApp:
             target_delay - self._four_phase_effective_group_delay) * blend
         if abs(target_delay) <= 1e-9 and abs(self._four_phase_effective_group_delay) < 1e-5:
             self._four_phase_effective_group_delay = 0.0
-        if profile_kind in ("depth spread", "howl"):
+        if profile_kind in ("depth spread", "howl", "custom"):
             self._four_phase_effective_group_delay = 0.0
         else:
             electrodes = apply_group_delay(
@@ -3800,7 +3884,13 @@ class VectorApp:
             self._four_phase_direction = 1 if delta > 0 else -1
         self._four_phase_last_l0 = path_l0
         depth_mode = self.four_phase_spatial_model.get() == "Depth spread"
-        if self.four_phase_spatial_model.get().startswith("Howl "):
+        if self.four_phase_spatial_model.get() == "Custom":
+            with self._four_phase_live_lock:
+                signed = self._four_phase_live_output[0]
+            self.four_phase_effective_crossover_width.set("Custom")
+            self.four_phase_stroke_phase_live.set("Custom curves")
+            self.four_phase_model_live.set("Custom curves: sequence mapping and focus apply; crossover and group delay bypassed")
+        elif self.four_phase_spatial_model.get().startswith("Howl "):
             with self._four_phase_live_lock:
                 signed = self._four_phase_live_output[0]
             self.four_phase_effective_crossover_width.set("Howl")

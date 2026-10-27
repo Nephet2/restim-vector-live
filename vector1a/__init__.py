@@ -1,3 +1,1 @@
-"""Vector 1A package."""
-
-__version__ = "1.6.0-alpha82"
+__version__ = "1.6.0-alpha82-custom-preview1"

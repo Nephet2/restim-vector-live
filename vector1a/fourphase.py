@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 
 ELECTRODE_ORDERS = ("ABCD", "ABDC", "BACD", "ACBD")
-SPATIAL_MODELS = ("Moving focus", "Depth spread", "Howl Positional", "Howl Dynamic")
+SPATIAL_MODELS = ("Moving focus", "Depth spread", "Howl Positional", "Howl Dynamic", "Custom")
 
 
 def adaptive_crossover_width(speed_percent: float, slow_width: float,
