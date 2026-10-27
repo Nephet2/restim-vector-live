@@ -1,24 +1,25 @@
-# Custom curves source preview (alpha82 base)
+# Vector 1A — Custom Curves preview 2 (alpha82 base)
 
-## Included
-- Four independently editable E1-E4 curves, presets, straight/smooth interpolation, live editing and 3D preview.
-- Named profiles with editable descriptions; semantic API discovery and selection.
-- Idle editor redraws are skipped until visible state changes.
-- Alpha82 network modules are unchanged, retaining stream replacement, ReStim keepalive, callback deferral and fixed connection-panel layout.
+## Changes
+- Fixes repeated UI freezes when a ReStim port is incorrect, unavailable or timing out. Health telemetry no longer waits for the socket I/O lock.
+- Connect and Disconnect buttons use per-endpoint background workers; the newest pending request replaces older pending requests.
+- Automatic ready startup leaves ongoing retries to the existing reconnect monitor. Session startup completes WebSocket handshakes off the UI thread before reporting READY.
+- Rejects late connection requests after the client is closed.
+- Places Edit Custom curves immediately beside the Spatial model dropdown.
+- Retains four editable E1-E4 curves, presets, straight/smooth interpolation, live editing, 3D preview, named profiles/descriptions and semantic API discovery/selection.
 
-## Start
-Use Python 3.11 or newer. The manually attached Windows source ZIP includes hash-verified Pillow 12.0.0 files for Python 3.13 x64; other Python versions can install their compatible Pillow with `python -m pip install ".[preview]"` after removing the incompatible dependencies folder. A plain GitHub source checkout can also use that install command for optional smoothing.
+MFP stream replacement, WebSocket framing/keepalive, independent output lanes, stale-frame rejection, Stop behaviour and recovery-neutral output logic are retained. Read-only health fields are best-effort snapshots and can straddle a connection transition.
 
-Extract into a new writable folder and run START_UI_PREVIEW.bat first. It blocks socket connections/binds, Bluetooth connection initiation, controller startup and external app launching. It suppresses automatic connections and media polling. No personal settings are included. Settings created in this folder are independent of other installations.
+## Run the normal application
+Extract the entire source ZIP into a new writable folder and double-click **start-vector1a.bat**. This starts the full standalone source application with normal connection and motion-output support. No AI model, Gwendolyn service or GPU is required. Python 3.11+ is required; Python 3.13 x64 is recommended for the included, hash-verified Pillow 12.0.0 dependency. The normal launcher loads the included dependency only on its compatible runtime. Other runtimes may install optional Pillow using `python -m pip install ".[preview]"`. Civet Bluetooth support uses the pinned Bleak dependency installed by that command.
 
-The ordinary start-vector1a.bat starts the full source application with connection support. This preview has not completed a new end-to-end hardware test. Do not overwrite a working installation. Copy settings only deliberately and retain your backup.
+No personal settings are shipped. To retain preferences, close Vector and copy your existing `profile/Vector1A/settings.json` into the matching location in the new folder. Keep the old installation intact. Otherwise configure the correct ReStim port in the new copy; generic defaults do not know your local port.
 
-## Validation and limitations
-245 local tests passed; 34 network-dependent checks were blocked by WinError 10013 in the restricted test environment. A dedicated idle-redraw regression is included. The tester reported that the disconnected UI preview works well. GitHub's Windows CI is intended to run the full suite independently.
+**START_CONNECTION_TEST.bat** permits ReStim handshakes but blocks motion/axis output, for testing connection responsiveness. **START_UI_PREVIEW.bat** blocks all connections for UI-only trials. Use these special launchers only for their stated tests; the normal application starts with **start-vector1a.bat**.
 
-Defender reported no threats in the local source preview folder. Seven prior build-tool packages (1,605 non-metadata files) matched freshly downloaded wheels whose hashes matched PyPI metadata. The earlier alpha84/85 Bearfoos detections remain unresolved; a source scan and successful startup do not establish the safety of those executables. No quarantined files were restored, protections changed or new executable built for this draft. Further runtime dependency review and a credible disposition of those detections are required before executable publication.
+## Validation
+The user reproduced freezes by entering an incorrect ReStim port and confirmed smooth window movement with the corrected test copy and ReStim unavailable. A controlled simulated 700 ms timeout stalled the old UI heartbeat by 676 ms; the fixed version measured 9 ms after startup paint. This is a UI responsiveness test, not a new physical-hardware test.
 
-The alpha83 closed-editor responsiveness issue was not reproduced as a sustained source-level regression in short controlled trials. Idle five-canvas redraw work was reduced, but an executable/environment-specific issue remains possible.
+251 local tests passed; 34 real-network tests were blocked by the restricted execution environment. Windows CI runs the full suite on Python 3.11, 3.13 and 3.14 before publication. Added checks cover nonblocking health reads and Connect, caller-thread Tk reads, newest pending requests, Disconnect, pending-command cancellation, closed-client rejection and startup handshake placement. Actual Tk geometry confirms the button sits 8 pixels beside the dropdown.
 
-## Package contents
-Personal profiles, addresses, settings backups, logs, local paths, quarantined builds, caches and build environments are excluded. Existing licences and credits are retained. Vector remains standalone; no AI model or Gwendolyn service is required.
+This distribution is a **Python source preview**, not a portable executable. Earlier alpha84/85 Bearfoos detections remain unresolved and have not been declared false positives. No quarantined files are restored and no new EXE is built. Any clean scan applies only to the specific source package scanned; it is not a safety determination for the old executables.

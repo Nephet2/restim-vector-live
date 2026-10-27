@@ -381,19 +381,23 @@ class _ReconnectClient:
     def connected(self) -> bool: return self._socket is not None
 
     def health(self) -> dict[str, object]:
-        with self._locked():
-            now = time.monotonic()
-            return {
-                "connected": self._socket is not None,
-                "socket_state": "connected" if self._socket is not None else "disconnected",
-                "tx_age": None if self._last_send is None else now - self._last_send,
-                "send_cadence": (None if self._last_send is None or self._previous_send is None
-                                  else self._last_send - self._previous_send),
-                "send_count": self._send_count,
-                "send_failures": self._send_failures,
-                "reconnect_attempts": self._reconnect_attempts,
-                "reconnect_successes": self._reconnect_successes,
-            }
+        """Best-effort scalar telemetry; never wait for connection/send locks.
+
+        Values can straddle a connection transition. No socket operations or
+        state mutations occur here; protocol operations remain serialized.
+        """
+        now = time.monotonic()
+        return {
+            "connected": self._socket is not None,
+            "socket_state": "connected" if self._socket is not None else "disconnected",
+            "tx_age": None if self._last_send is None else now - self._last_send,
+            "send_cadence": (None if self._last_send is None or self._previous_send is None
+                              else self._last_send - self._previous_send),
+            "send_count": self._send_count,
+            "send_failures": self._send_failures,
+            "reconnect_attempts": self._reconnect_attempts,
+            "reconnect_successes": self._reconnect_successes,
+        }
 
     def _sent(self) -> None:
         now = time.monotonic()
@@ -401,11 +405,15 @@ class _ReconnectClient:
         self._send_count += 1
 
     def connect(self, host: str, port: int) -> None:
+        if self._closed.is_set():
+            raise OSError("ReStim client is closed")
         self.disconnect(False)
         self._target = (host, port)
         self._manual_disconnect = False
         try:
             with self._locked():
+                if self._closed.is_set():
+                    raise OSError("ReStim client is closed")
                 self._connect_now()
         except OSError:
             self._retry_at = time.monotonic() + 1.0

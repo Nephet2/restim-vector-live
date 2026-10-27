@@ -15,6 +15,7 @@ from .howl_conversion import LiveConversion, positional as howl_positional
 from .events import AXIS_AUTHORED, EventEngine
 from .motion import MotionMode, MotionParameters
 from .network import LatestFrameDispatcher, MFPListener, ReStimWebSocketClient
+from .connection_actions import ConnectionActions
 from .routing import AuthoredAxisRouter
 from .orchestration import SessionOrchestrator, port_is_open, wait_for_port
 from .settings import load_settings, save_settings, settings_path
@@ -492,6 +493,10 @@ class VectorApp:
         self.orchestrator = SessionOrchestrator(self._set_startup_status)
         self.restim = ReStimWebSocketClient(self._set_restim_status)
         self.prostate_restim = ReStimWebSocketClient(self._set_prostate_status)
+        self._connection_actions = {
+            "primary": ConnectionActions(self.restim, self._set_restim_status, "primary"),
+            "secondary": ConnectionActions(self.prostate_restim, self._set_prostate_status, "secondary"),
+        }
         self.restim_sender = LatestFrameDispatcher("Primary", self._set_restim_status)
         self.prostate_sender = LatestFrameDispatcher("Prostate", self._set_prostate_status)
         self.pressure_control = PressureControl()
@@ -643,7 +648,7 @@ class VectorApp:
         ttk.Label(restim, text="Port").grid(row=0, column=2)
         ttk.Spinbox(restim, from_=1, to=65535, textvariable=self.restim_port, width=7).grid(row=0, column=3, padx=5)
         ttk.Button(restim, text="Connect", command=self.connect_restim).grid(row=1, column=0, pady=8)
-        ttk.Button(restim, text="Disconnect", command=self.restim.disconnect).grid(row=1, column=1, pady=8)
+        ttk.Button(restim, text="Disconnect", command=self.disconnect_restim).grid(row=1, column=1, pady=8)
         self._restim_status_label = ttk.Label(restim, textvariable=self.restim_status, width=1, anchor="w")
         self._restim_status_label.grid(row=2, column=0, columnspan=4, sticky="ew")
         ttk.Label(restim, text="Prostate").grid(row=3, column=0, sticky="w")
@@ -651,7 +656,7 @@ class VectorApp:
         ttk.Label(restim, text="Port").grid(row=3, column=2, sticky="e")
         ttk.Spinbox(restim, from_=1, to=65535, textvariable=self.prostate_port, width=7).grid(row=3, column=3, padx=5)
         ttk.Button(restim, text="Connect", command=self.connect_prostate).grid(row=4, column=0, pady=6)
-        ttk.Button(restim, text="Disconnect", command=self.prostate_restim.disconnect).grid(row=4, column=1, pady=6)
+        ttk.Button(restim, text="Disconnect", command=self.disconnect_prostate).grid(row=4, column=1, pady=6)
         self._prostate_status_label = ttk.Label(restim, textvariable=self.prostate_status, width=1, anchor="w")
         self._prostate_status_label.grid(row=5, column=0, columnspan=4, sticky="ew")
 
@@ -972,11 +977,12 @@ class VectorApp:
                   "Carrier and rise time remain Vector controls.", wraplength=680).grid(
                       row=3, column=0, columnspan=4, sticky="w")
         ttk.Label(four_phase, text="Spatial model").grid(row=10, column=0, sticky="w")
-        ttk.Combobox(four_phase, textvariable=self.four_phase_spatial_model,
-                     values=SPATIAL_MODELS, state="readonly", width=19).grid(
-                         row=10, column=1, sticky="w")
-        ttk.Button(four_phase, text="Edit Custom curves", command=self.show_custom_curves).grid(
-            row=10, column=6, sticky="w", padx=(8, 0))
+        spatial_selector = ttk.Frame(four_phase)
+        spatial_selector.grid(row=10, column=1, sticky="w")
+        ttk.Combobox(spatial_selector, textvariable=self.four_phase_spatial_model,
+                     values=SPATIAL_MODELS, state="readonly", width=19).pack(side="left")
+        ttk.Button(spatial_selector, text="Edit Custom curves",
+                   command=self.show_custom_curves).pack(side="left", padx=(8, 0))
         ttk.Label(four_phase, text="Tip retention at full depth").grid(
             row=10, column=2, sticky="e", padx=(8, 4))
         ttk.Spinbox(four_phase, from_=0, to=1, increment=.05,
@@ -1321,12 +1327,18 @@ class VectorApp:
                         failed.append(label)
                         messages.append(f"{label}: port {host}:{port} not ready after 12 s")
 
+            # TCP readiness does not guarantee a successful WebSocket handshake.
+            # Complete handshakes on this worker, before reporting READY in Tk.
+            for key, label, client in (("restim", "Primary ReStim", self.restim),
+                                       ("prostate", "Prostate ReStim", self.prostate_restim)):
+                if selected[key] and label not in failed and not client.connected:
+                    try:
+                        client.connect(hosts[key], ports[key])
+                    except OSError as exc:
+                        failed.append(label)
+                        messages.append(f"{label}: handshake failed: {exc}")
+
             def finish() -> None:
-                # Only attempt WebSocket handshakes after the corresponding TCP service is ready.
-                if selected["restim"] and "Primary ReStim" not in failed:
-                    self.connect_restim()
-                if selected["prostate"] and "Prostate ReStim" not in failed:
-                    self.connect_prostate()
                 self._startup_in_progress = False
                 if failed:
                     self.session_ready_status.set("SESSION: ATTENTION")
@@ -1347,14 +1359,14 @@ class VectorApp:
             host, port = self.restim_host.get().strip(), int(self.restim_port.get())
             self._automatic_ready_stop.clear()
             def connect_when_ready():
-                while not self._automatic_ready_stop.is_set():
-                    if not self.restim.connected:
-                        try:
-                            self.restim.connect(host, port)
-                        except OSError as exc:
-                            self._set_restim_status(f"Waiting for ReStim: {exc}")
-                    if self._automatic_ready_stop.wait(2.0):
-                        break
+                # The client owns ongoing retries. Reissuing connect() here
+                # would repeatedly tear down attempts and restore an old port.
+                if self._automatic_ready_stop.is_set():
+                    return
+                try:
+                    self.restim.connect(host, port)
+                except OSError as exc:
+                    self._set_restim_status(f"Waiting for ReStim: {exc}")
             threading.Thread(target=connect_when_ready, name="vector-auto-connect", daemon=True).start()
         if self.auto_start_mfp.get() or self.auto_start_restim.get() or self.auto_start_prostate.get():
             self._launch_session_apps()
@@ -1522,16 +1534,20 @@ class VectorApp:
             messagebox.showerror("MFP listener", str(exc))
 
     def connect_restim(self) -> None:
-        try:
-            self.restim.connect(self.restim_host.get().strip(), self.restim_port.get())
-        except OSError as exc:
-            self._set_restim_status(f"Connection failed: {exc}")
+        # Read Tk variables here, then hand only plain values to the worker.
+        self._connection_actions["primary"].submit(
+            "connect", self.restim_host.get().strip(), self.restim_port.get())
+
+    def disconnect_restim(self) -> None:
+        self._automatic_ready_stop.set()
+        self._connection_actions["primary"].submit("disconnect")
 
     def connect_prostate(self) -> None:
-        try:
-            self.prostate_restim.connect(self.prostate_host.get().strip(), self.prostate_port.get())
-        except OSError as exc:
-            self._set_prostate_status(f"Connection failed: {exc}")
+        self._connection_actions["secondary"].submit(
+            "connect", self.prostate_host.get().strip(), self.prostate_port.get())
+
+    def disconnect_prostate(self) -> None:
+        self._connection_actions["secondary"].submit("disconnect")
 
     def _four_phase_send_toggle(self) -> None:
         if not self.send_four_phase_visual.get():
@@ -4038,6 +4054,8 @@ class VectorApp:
         self.listener.stop()
         self.restim_sender.close()
         self.prostate_sender.close()
+        for actions in self._connection_actions.values():
+            actions.close()
         self.restim.close()
         self.prostate_restim.close()
         self.director_server.stop()

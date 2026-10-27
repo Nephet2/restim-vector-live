@@ -1,6 +1,7 @@
-# Custom curves source preview (alpha82 base)
+# Custom Curves preview 2 (alpha82 base)
 
-This branch adds editable E1-E4 Custom spatial curves and named profiles to alpha82. It is a draft source preview, with no newly packaged Windows executable. See CUSTOM_PREVIEW.md for startup and validation status.
+Adds tunable E1-E4 Custom curves to alpha82, fixes interface stalls while ReStim is unavailable, and places Edit Custom curves beside Spatial model. Run `start-vector1a.bat` for the normal source application. See CUSTOM_PREVIEW.md for setup, test launchers and validation. No portable EXE is included.
+
 
 # Vector 1A
 

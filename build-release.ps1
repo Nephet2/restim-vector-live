@@ -12,7 +12,7 @@ foreach ($target in @($stage, $zip)) {
 if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
 if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
 New-Item -ItemType Directory -Path $stage -Force | Out-Null
-$files = @("vector1a", "tests", "packaging", "build-exe.ps1", "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "CONTRIBUTING.md", "SECURITY.md", "pyproject.toml", "start-vector1a.bat", "build-release.ps1", "build-release.bat", "HOWL-SETUP.md", "CIVET_PRESSURE.md")
+$files = @("vector1a", "tests", "packaging", "build-exe.ps1", "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "CONTRIBUTING.md", "SECURITY.md", "pyproject.toml", "start-vector1a.bat", "standalone_entry.py", "START_UI_PREVIEW.bat", "preview_ui.py", "START_CONNECTION_TEST.bat", "connection_preview.py", "CUSTOM_PREVIEW.md", "build-release.ps1", "build-release.bat", "HOWL-SETUP.md", "CIVET_PRESSURE.md")
 foreach ($item in $files) { Copy-Item -LiteralPath (Join-Path $project $item) -Destination $stage -Recurse }
 Get-ChildItem -LiteralPath $project -Filter "RELEASE_NOTES_*.md" | Copy-Item -Destination $stage
 Get-ChildItem -LiteralPath $stage -Recurse -Directory -Filter __pycache__ | ForEach-Object {
