@@ -1,7 +1,7 @@
 name: Publish alpha83 portable Windows release
 on:
   push:
-    branches: [release/1.6.0-alpha83]
+    branches: [release/1.6.0-alpha83-]
 permissions:
   contents: read
 jobs:
