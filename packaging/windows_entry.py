@@ -15,6 +15,8 @@ def smoke_test(report_path: str) -> None:
     from tkinter import ttk
     import bleak
     from vector1a import __version__
+    from vector1a.antialias_canvas import ANTIALIAS_AVAILABLE
+    assert ANTIALIAS_AVAILABLE, "Pillow preview support is missing"
     from vector1a.app import VectorApp
     from vector1a.events import load_definitions
     root = tk.Tk()

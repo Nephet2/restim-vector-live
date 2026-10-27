@@ -1,7 +1,9 @@
 # Vector 1A
 
-**Windows app:** download the `windows-exe.zip` from Releases, extract the whole folder, and run the executable. No Python installation is required. Keep `_internal` beside the executable. Both editions keep settings in `profile/Vector1A/settings.json` beside the launcher. See [alpha81 release notes](RELEASE_NOTES_1.6.0-alpha82.md) for upgrade details.
+**Windows app:** download the `windows-exe.zip` from Releases, extract the whole folder, and run the executable. No Python installation is required. Keep `_internal` beside the executable. Both editions keep settings in `profile/Vector1A/settings.json` beside the launcher. See [alpha83 release notes](RELEASE_NOTES_1.6.0-alpha83.md) for upgrade details.
 
+
+**Custom spatial curves:** In 4-phase mode select **Custom** under Spatial model and open **Edit Custom curves**. Shape each electrode curve, preview it in 3D, and save named profiles with descriptions. Changes to the active curves take effect live.
 
 Vector 1A is a standalone live bridge from MultiFunPlayer T-code to one or two ReStim
 instances. It does not require an AI model, GPU, cloud service, or voice stack. With an
