@@ -112,7 +112,7 @@ class NetworkTests(unittest.TestCase):
         client = ReStimWebSocketClient(lambda _: None); client.connect("127.0.0.1", port)
         client.send_prostate(.1, .2, .3, .4, .5, .6, .7)
         time.sleep(.05); client.disconnect()
-        self.assertIn("L01000 L12000 V03000 F04000 P05000 P16000 P37000", received)
+        self.assertIn("L01000 L12000 V03000 C04000 P05000 P16000 P37000", received)
 
     def test_listener_accepts_a_new_tcp_client_after_disconnect(self):
         values = []
@@ -280,3 +280,4 @@ def test_mfp_listener_records_raw_packet_and_all_axes():
     assert packet["transport"] == "UDP"
     assert packet["axes"] == ["L0", "L1", "V0", "C0"]
     assert packet["raw"] == "L05000L17500V02500 C09000"
+
