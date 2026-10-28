@@ -577,8 +577,7 @@ class VectorApp:
             ("C0", self.send_frequency), ("P0", self.send_pulse_frequency),
             ("P3", self.send_pulse_rise), ("P1", self.send_pulse_width)) if not variable.get()}
         self.restim.suppressed_axes = frozenset(disabled)
-        self.prostate_restim.suppressed_axes = frozenset(
-            "F0" if axis == "C0" else axis for axis in disabled)
+        self.prostate_restim.suppressed_axes = frozenset(disabled)
 
     def _frame(self, title: str, row: int, column: int = 0, span: int = 1) -> ttk.Frame:
         collapsed_titles = {

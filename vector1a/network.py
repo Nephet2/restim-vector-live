@@ -595,7 +595,7 @@ class ReStimWebSocketClient(_ReconnectClient):
     def send_prostate(self, alpha, beta, volume, frequency, pulse_frequency,
                       pulse_width, pulse_rise_time) -> bool:
         message = " ".join((format_command("L0", alpha), format_command("L1", beta),
-                            format_command("V0", volume), format_command("F0", frequency),
+                            format_command("V0", volume), format_command("C0", frequency),
                             format_command("P0", pulse_frequency), format_command("P1", pulse_width),
                             format_command("P3", pulse_rise_time)))
         neutral = " ".join((format_command("L0", .5), format_command("L1", .5),
@@ -645,3 +645,4 @@ class ReStimWebSocketClient(_ReconnectClient):
                             for axis in ("E1", "E2", "E3", "E4")] +
                            [format_command("V0", 0.0)])
         return self._send_message(message, neutral)
+
