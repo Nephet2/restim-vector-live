@@ -9,6 +9,8 @@ from collections import deque
 from tkinter import filedialog, messagebox, ttk
 
 from .engine import OutputSample, VectorEngine
+from .range_bar import RangeBar
+from .output_ranges import match_volume_response
 from .pressure_control import PressureControl
 from .custom_spatial import CurveEditor, make_preset, validate_curves, evaluate_curves, validate_profile, validated_profiles
 from .howl_conversion import LiveConversion, positional as howl_positional
@@ -36,21 +38,6 @@ from .focus import (TOP_FOCUS_LABELS, BOTTOM_FOCUS_LABELS, apply_top_focus,
                     apply_bottom_focus_window, top_focus_weights, bottom_focus_window,
                     BottomFocusTransition, FocusHistory)
 from . import __version__
-
-
-class RangeBar(tk.Canvas):
-    def __init__(self, parent, width=520, height=24):
-        super().__init__(parent, width=width, height=height, highlightthickness=1,
-                         highlightbackground="#999", background="#e6e6e6")
-        self._width, self._height = width, height
-
-    def set(self, minimum: float, maximum: float, value: float) -> None:
-        minimum, maximum, value = (min(1.0, max(0.0, x)) for x in (minimum, maximum, value))
-        self.delete("all")
-        self.create_rectangle(minimum * self._width, 1, maximum * self._width,
-                              self._height - 1, fill="#08ae2a", outline="")
-        x = value * self._width
-        self.create_line(x, 0, x, self._height, fill="#173b8f", width=3)
 
 
 class CollapsibleSection(ttk.Frame):
@@ -189,6 +176,7 @@ class VectorApp:
 
     SETTINGS_FIELDS = (
         "automatic_ready",
+        "volume_response_min", "volume_response_max", "frequency_min", "frequency_max",
         "send_frequency", "send_pulse_frequency", "send_pulse_rise", "send_pulse_width",
         "howl_width", "howl_pan", "howl_boost", "howl_sigma", "howl_pulse", "howl_thump", "howl_freq_min", "howl_freq_max", "howl_balance_a", "howl_balance_b", "howl_scaling", "howl_position_strength", "match_spatial_intensity",
         "mfp_host", "mfp_port", "restim_host", "restim_port", "prostate_host", "prostate_port",
@@ -286,6 +274,10 @@ class VectorApp:
         self.rate = tk.IntVar(value=50)
         self.lookahead = tk.DoubleVar(value=2.0)
         self.volume = tk.DoubleVar(value=0.70)
+        self.volume_response_min = tk.DoubleVar(value=0.0)
+        self.volume_response_max = tk.DoubleVar(value=1.0)
+        self.frequency_min = tk.DoubleVar(value=0.0)
+        self.frequency_max = tk.DoubleVar(value=1.0)
         self.dynamic_volume = tk.BooleanVar(value=True)
         self.volume_rest_level = tk.DoubleVar(value=0.40)
         self.volume_ratio = tk.DoubleVar(value=20.0)
@@ -527,6 +519,8 @@ class VectorApp:
         self._four_phase_history = deque(maxlen=128)
         self._four_phase_effective_group_delay = 0.0
         self._four_phase_group_delay_last_time = None
+        self._outgoing_volume_lock = threading.Lock()
+        self._outgoing_volumes = None
         self._four_phase_live_lock = threading.Lock()
         self._four_phase_live_output = (
             (0.5, 0.5, 0.5, 0.5), "ABCD", "ABCD", 0.0, "stable")
@@ -585,7 +579,7 @@ class VectorApp:
             "Prostate controls", "Four-phase primary motion",
             "Xbox controller", "Rolling Variety", "Live diagnostics",
         }
-        section = CollapsibleSection(self.root, title, collapsed=(title in collapsed_titles))
+        section = CollapsibleSection(self.content, title, collapsed=(title in collapsed_titles))
         section.grid(row=row + 1, column=column, columnspan=span, sticky="nsew", padx=10, pady=3)
         send_control = {"Frequency": self.send_frequency,
                         "Pulse frequency": self.send_pulse_frequency,
@@ -602,13 +596,63 @@ class VectorApp:
         self.sections[title] = section
         return section.body
 
+    def _scroll_main(self, event):
+        # Scope wheel handling to this main view, leaving popup windows alone.
+        widget = event.widget
+        if widget.winfo_class() in ("TSpinbox", "Spinbox", "TCombobox", "Scale", "TScale", "Text", "Listbox"):
+            return None
+        while widget not in (self.content, self.main_canvas):
+            widget = widget.master
+            if widget is None:
+                return None
+        low, high = self.main_canvas.yview()
+        if high - low >= .999:
+            return None
+        number = getattr(event, "num", None)
+        delta = getattr(event, "delta", 0)
+        units = (-1 if number == 4 else 1) if number in (4, 5) else (
+            -max(1, abs(int(delta)) // 120) if delta > 0 else max(1, abs(int(delta)) // 120))
+        self.main_canvas.yview_scroll(units * 3, "units")
+        return "break"
+
+    def show_volume_guide(self) -> None:
+        messagebox.showinfo("Volume response", "The bar shows the generated response BEFORE the primary ceiling and gain. "
+            "Primary V0 = response x Primary volume ceiling, before matching and other modifiers. "
+            "For example, 0.3928 x 0.85 = 0.3339. Prostate uses Base volume instead of the primary ceiling.\n\n"
+            "Match intensity across spatial modes affects PRIMARY volume in Moving Focus, Depth Spread and Howl modes. "
+            "It respects the response range, rest level and return ramp. Howl amplitude controls apply across these modes; "
+            "prostate has its own response.\n\n"
+            "Outgoing V0 values include gain, events and authored overrides. They are commands, not device acknowledgements. "
+            "Drag the upper bar handle for Min and the lower handle for Max; Up/Down selects a handle and arrows adjust it.",
+            parent=self.root)
+
     def _build(self) -> None:
-        self.root.columnconfigure(0, weight=1, uniform="connection_panels")
-        self.root.columnconfigure(1, weight=1, uniform="connection_panels")
-        self.root.rowconfigure(12, weight=1)
+        self.root.columnconfigure(0, weight=1)
+        self.root.rowconfigure(1, weight=1)
+        viewport = ttk.Frame(self.root)
+        viewport.grid(row=1, column=0, sticky="nsew")
+        viewport.columnconfigure(0, weight=1)
+        viewport.rowconfigure(0, weight=1)
+        self.main_canvas = tk.Canvas(viewport, highlightthickness=0, yscrollincrement=24)
+        self.main_canvas.grid(row=0, column=0, sticky="nsew")
+        self.main_scrollbar = ttk.Scrollbar(viewport, orient="vertical",
+                                           command=self.main_canvas.yview)
+        self.main_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.main_canvas.configure(yscrollcommand=self.main_scrollbar.set)
+        self.content = ttk.Frame(self.main_canvas)
+        self.content.columnconfigure(0, weight=1, uniform="connection_panels")
+        self.content.columnconfigure(1, weight=1, uniform="connection_panels")
+        self._content_window = self.main_canvas.create_window(0, 0, anchor="nw", window=self.content)
+        self.content.bind("<Configure>", lambda event: self.main_canvas.configure(
+            scrollregion=self.main_canvas.bbox("all")))
+        self.main_canvas.bind("<Configure>", lambda event: self.main_canvas.itemconfigure(
+            self._content_window, width=event.width))
+        self.root.bind("<MouseWheel>", self._scroll_main, add="+")
+        self.root.bind("<Button-4>", self._scroll_main, add="+")
+        self.root.bind("<Button-5>", self._scroll_main, add="+")
 
         toolbar = ttk.Frame(self.root, padding=(12, 6))
-        toolbar.grid(row=0, column=0, columnspan=2, sticky="ew")
+        toolbar.grid(row=0, column=0, sticky="ew")
         ttk.Label(toolbar, text="ReStim Vector Live", font=("TkDefaultFont", 10, "bold")).pack(side="left")
         ttk.Button(toolbar, text="START / RESUME", command=self.resume).pack(side="left", padx=(24, 6))
         ttk.Button(toolbar, text="Neutral", command=self.neutral).pack(side="left", padx=6)
@@ -751,10 +795,37 @@ class VectorApp:
                     textvariable=self.four_phase_volume_ceiling, width=8).grid(
                         row=0, column=8)
 
+        ttk.Label(volume_frame, text="Response  0").grid(row=1, column=0, sticky="e", pady=(8, 0))
+        self.volume_response_bar = RangeBar(volume_frame,
+            minimum_var=self.volume_response_min, maximum_var=self.volume_response_max,
+            command=self.apply_config)
+        self.volume_response_bar.grid(row=1, column=1, columnspan=4, padx=8, pady=(8, 0), sticky="w")
+        self.volume_response_value = tk.StringVar(value="0.0000")
+        ttk.Label(volume_frame, text="1").grid(row=1, column=5, pady=(8, 0))
+        ttk.Label(volume_frame, textvariable=self.volume_response_value,
+                  font=("TkDefaultFont", 10, "bold")).grid(row=1, column=6, pady=(8, 0))
+        volume_range_fields = ttk.Frame(volume_frame)
+        volume_range_fields.grid(row=1, column=7, columnspan=2, sticky="w", padx=(8, 0), pady=(8, 0))
+        for col, (label, variable) in enumerate((("Min", self.volume_response_min),
+                                                ("Max", self.volume_response_max))):
+            ttk.Label(volume_range_fields, text=label).grid(row=0, column=col*2, padx=(0,4))
+            ttk.Spinbox(volume_range_fields, from_=0, to=1, increment=.01, width=6,
+                        textvariable=variable, command=self.apply_config).grid(row=0,column=col*2+1,padx=(0,8))
+        ttk.Checkbutton(volume_frame, text="Match intensity across spatial modes",
+                        variable=self.match_spatial_intensity,
+                        command=self._save_settings).grid(row=2, column=0, columnspan=3,
+                                                         sticky="w", pady=(6, 0))
+        ttk.Button(volume_frame, text="Explain volume", command=self.show_volume_guide).grid(
+            row=2, column=3, sticky="w", pady=(6, 0))
+        self.outgoing_volume_value = tk.StringVar(value="Outgoing V0: no commands yet")
+        ttk.Label(volume_frame, textvariable=self.outgoing_volume_value,
+                  font=("TkDefaultFont", 10, "bold")).grid(row=2, column=4, columnspan=5,
+                                                         sticky="w", padx=(8, 0), pady=(6, 0))
+
         frequency_frame = self._frame("Frequency", 3, 0, 2)
         ttk.Label(frequency_frame, text="0").grid(row=0, column=0)
-        self.frequency_bar = ttk.Progressbar(frequency_frame, orient="horizontal", mode="determinate",
-                                             maximum=1.0, length=520)
+        self.frequency_bar = RangeBar(frequency_frame, minimum_var=self.frequency_min,
+                                      maximum_var=self.frequency_max, command=self.apply_config)
         self.frequency_bar.grid(row=0, column=1, padx=8)
         ttk.Label(frequency_frame, text="1").grid(row=0, column=2)
         self.frequency_value = tk.StringVar(value="0.0000")
@@ -769,9 +840,19 @@ class VectorApp:
                     textvariable=self.frequency_ratio, width=7,
                     command=self.apply_config).grid(row=0, column=7)
 
+        frequency_ranges = ttk.Frame(frequency_frame)
+        frequency_ranges.grid(row=1,column=1,columnspan=7,sticky="w",pady=(4,0))
+        for col, (label, variable) in enumerate((("Min", self.frequency_min), ("Max", self.frequency_max))):
+            ttk.Label(frequency_ranges,text=label).grid(row=0,column=col*2,padx=(0,4))
+            ttk.Spinbox(frequency_ranges,from_=0,to=1,increment=.01,width=7,
+                        textvariable=variable,command=self.apply_config).grid(row=0,column=col*2+1,padx=(0,12))
+        ttk.Label(frequency_ranges,text="Drag handles; Up/Down selects Max/Min; arrows adjust by 0.01.",
+                  foreground="#555").grid(row=0,column=4)
+
         pulse_frame = self._frame("Pulse frequency", 4, 0, 2)
         ttk.Label(pulse_frame, text="0").grid(row=0, column=0)
-        self.pulse_frequency_bar = RangeBar(pulse_frame)
+        self.pulse_frequency_bar = RangeBar(pulse_frame, minimum_var=self.pulse_frequency_min,
+                                        maximum_var=self.pulse_frequency_max, command=self.apply_config)
         self.pulse_frequency_bar.grid(row=0, column=1, padx=8)
         ttk.Label(pulse_frame, text="1").grid(row=0, column=2)
         self.pulse_frequency_value = tk.StringVar(value="0.0000")
@@ -790,7 +871,8 @@ class VectorApp:
 
         rise_frame = self._frame("Pulse rise time", 5, 0, 2)
         ttk.Label(rise_frame, text="0 sharp").grid(row=0, column=0)
-        self.pulse_rise_bar = RangeBar(rise_frame)
+        self.pulse_rise_bar = RangeBar(rise_frame, minimum_var=self.pulse_rise_min,
+                                        maximum_var=self.pulse_rise_max, command=self.apply_config)
         self.pulse_rise_bar.grid(row=0, column=1, padx=8)
         ttk.Label(rise_frame, text="1 soft").grid(row=0, column=2)
         self.pulse_rise_value = tk.StringVar(value="0.0000")
@@ -807,7 +889,8 @@ class VectorApp:
                         command=self.apply_config).grid(row=0, column=col + 1)
         width_frame = self._frame("Pulse width", 6, 0, 2)
         ttk.Label(width_frame, text="0 narrow").grid(row=0, column=0)
-        self.pulse_width_bar = RangeBar(width_frame)
+        self.pulse_width_bar = RangeBar(width_frame, minimum_var=self.pulse_width_min,
+                                        maximum_var=self.pulse_width_max, command=self.apply_config)
         self.pulse_width_bar.grid(row=0, column=1, padx=8)
         ttk.Label(width_frame, text="1 wide").grid(row=0, column=2)
         self.pulse_width_value = tk.StringVar(value="0.0000")
@@ -964,12 +1047,6 @@ class VectorApp:
         ttk.Label(howl_controls, text="Balance: 0 reduces high frequencies; 0.5 neutral; "
                   "1 reduces low frequencies. Pulse range is within ReStim's 1–100 Hz mapping.",
                   wraplength=680).grid(row=8, column=0, columnspan=5, sticky="w")
-        ttk.Checkbutton(howl_controls, text="Match intensity across spatial modes",
-                        variable=self.match_spatial_intensity,
-                        command=self._save_settings).grid(row=9, column=0, columnspan=5, sticky="w")
-        ttk.Label(howl_controls, text="Uses one movement-based volume envelope for Moving Focus, "
-                  "Depth Spread and both Howl modes. Howl amplitude controls apply to all four.",
-                  wraplength=680).grid(row=10, column=0, columnspan=5, sticky="w")
         ttk.Checkbutton(howl_controls, text="Howl pulse frequency and low-frequency thump",
                         variable=self.howl_pulse).grid(row=2, column=0, columnspan=4, sticky="w")
         ttk.Label(howl_controls, text="Pulse option requires ReStim P0 range 1–100 Hz, P1 range 3–20 cycles. "
@@ -2098,6 +2175,10 @@ class VectorApp:
             self.engine.configure(rate_hz=self.rate.get(), lookahead_seconds=self.lookahead.get(),
                                   volume=self.volume.get(), mode=selected, params=params,
                                   dynamic_volume=self.dynamic_volume.get(),
+                                  volume_response_min=self.volume_response_min.get(),
+                                  volume_response_max=self.volume_response_max.get(),
+                                  frequency_min=self.frequency_min.get(),
+                                  frequency_max=self.frequency_max.get(),
                                   volume_rest_level=self.volume_rest_level.get(),
                                   volume_ramp_speed_ratio=self.volume_ratio.get(),
                                   volume_ramp_up_seconds=self.volume_ramp_up.get(),
@@ -3616,10 +3697,13 @@ class VectorApp:
                           self.four_phase_volume_headroom.get() * wave * variation_depth)
         primary_volume = min(1.0, max(0.0,
             ceiling * sample.volume / max(self.volume.get(), 1e-9)))
-        if match_intensity:
-            primary_volume = ceiling * self._howl_frame.matched_volume if sample.volume > 0 else 0.0
-        elif howl_mode:
-            primary_volume = ceiling * self._howl_frame.volume if sample.volume > 0 else 0.0
+        if match_intensity or howl_mode:
+            intensity = (self._howl_frame.matched_volume if match_intensity
+                         else self._howl_frame.volume)
+            response = sample.volume / max(self.volume.get(), 1e-9)
+            rest_response = self.engine.volume_rest_response()
+            primary_volume = (ceiling * match_volume_response(response, intensity, rest_response)
+                              if sample.volume > 0 else 0.0)
         if self.four_phase_stroke_phase_texture.get():
             configured = (self.motion_rising_volume_multiplier.get()
                           if self._motion_send_direction > 0
@@ -3708,6 +3792,10 @@ class VectorApp:
                 for event_axis, authored_axis in AXIS_AUTHORED.items():
                     if authored_axis in authored_overrides:
                         authored_overrides[authored_axis] = event_values[event_axis]
+        with self._outgoing_volume_lock:
+            self._outgoing_volumes = (
+                authored_overrides.get("V0", primary_volume) if authored_overrides else primary_volume,
+                bottom_volume)
         primary_args = (
             primary_alpha, primary_beta, tuple(electrodes), primary_volume, primary_frequency,
             primary_pulse_frequency, sample.pulse_rise_time, primary_pulse_width)
@@ -3746,6 +3834,8 @@ class VectorApp:
         self._motion_send_direction = 1
         self.engine.neutral()
         neutral_volume = self.volume.get()
+        with self._outgoing_volume_lock:
+            self._outgoing_volumes = (neutral_volume, neutral_volume)
         self.restim_sender.submit(
             lambda: self.restim.send_primary(
                 0.5, 0.5, (0.5, 0.5, 0.5, 0.5), neutral_volume, 0.5, 0.5, 0.5, 0.5),
@@ -3774,6 +3864,8 @@ class VectorApp:
         self._motion_send_last_l0 = 0.5
         self._motion_send_direction = 1
         self.engine.stop()
+        with self._outgoing_volume_lock:
+            self._outgoing_volumes = (0.0, 0.0)
         self.restim_sender.submit(
             lambda: self.restim.send_primary(
                 0.5, 0.5, (0.5, 0.5, 0.5, 0.5), 0.0, 0.5, 0.5, 0.5, 0.5),
@@ -3861,7 +3953,16 @@ class VectorApp:
         for key, value in values.items():
             self.diag_vars[key].set(value)
         self.variation_depth_live.set(f"Effect depth {diag.variation_depth * 100:.0f}%")
-        self.frequency_bar["value"] = diag.frequency
+        volume_response = diag.output_volume / max(self.volume.get(), 1e-9)
+        self.volume_response_bar.set(self.volume_response_min.get(), self.volume_response_max.get(), volume_response)
+        self.volume_response_value.set(f"{volume_response:.4f}")
+        with self._outgoing_volume_lock:
+            outgoing = self._outgoing_volumes
+        if outgoing is not None:
+            self.outgoing_volume_value.set(
+                f"Outgoing V0: Primary {outgoing[0]:.4f} ({outgoing[0]*100:.1f}%)   |   "
+                f"Prostate {outgoing[1]:.4f} ({outgoing[1]*100:.1f}%)")
+        self.frequency_bar.set(self.frequency_min.get(), self.frequency_max.get(), diag.frequency)
         self.frequency_value.set(f"{diag.frequency:.4f}")
         self.pulse_frequency_bar.set(self.pulse_frequency_min.get(),
                                      self.pulse_frequency_max.get(), diag.pulse_frequency)
@@ -3979,7 +4080,7 @@ class VectorApp:
             "Volume response": (
                 f"Base {self.volume.get() * 100:.0f}% | "
                 f"primary ceiling {self.four_phase_volume_ceiling.get() * 100:.0f}% | "
-                f"rest {self.volume_rest_level.get() * 100:.0f}%"
+                f"rest {self.volume_rest_level.get() * 100:.0f}% | response {self.volume_response_min.get():.2f}-{self.volume_response_max.get():.2f}"
             ),
             "Frequency": f"{diag.frequency:.3f} | ramp {self.frequency_ramp_level.get():.2f}",
             "Pulse frequency": f"{diag.pulse_frequency:.3f} | range {self.pulse_frequency_min.get():.2f}-{self.pulse_frequency_max.get():.2f}",

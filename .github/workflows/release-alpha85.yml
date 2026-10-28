@@ -1,0 +1,62 @@
+name: Publish alpha85 source
+on:
+  push:
+    branches: [release/1.6.0-alpha85]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.13', '3.14']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install ".[test]"
+      - run: python -m pytest -q
+      - run: python -m compileall -q vector1a packaging standalone_entry.py
+  package:
+    needs: test
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Verify source version
+        shell: pwsh
+        run: |
+          $version = python -c "from vector1a import __version__; print(__version__)"
+          if ($version -ne '1.6.0-alpha85') { throw 'This workflow only publishes alpha85' }
+      - name: Fetch and verify the pinned Pillow wheel
+        shell: pwsh
+        run: |
+          $wheel = Join-Path $env:RUNNER_TEMP 'pillow-12.0.0-cp313-cp313-win_amd64.whl'
+          Invoke-WebRequest 'https://files.pythonhosted.org/packages/6d/2a/dd43dcfd6dae9b6a49ee28a8eedb98c7d5ff2de94a5d834565164667b97b/pillow-12.0.0-cp313-cp313-win_amd64.whl' -OutFile $wheel
+          $expected = '4cf7fed4b4580601c4345ceb5d4cbf5a980d030fd5ad07c4d2ec589f95f09905'
+          if ((Get-FileHash -LiteralPath $wheel -Algorithm SHA256).Hash.ToLower() -ne $expected) { throw 'Pillow publisher hash mismatch' }
+          "PILLOW_WHEEL=$wheel" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Build the source package
+        run: python packaging/build_custom_source.py --pillow-wheel "$env:PILLOW_WHEEL" --output dist
+      - name: Smoke-test the extracted normal source entry point without output
+        shell: pwsh
+        run: |
+          $check = Join-Path $env:RUNNER_TEMP 'alpha85-source-check'
+          Expand-Archive -LiteralPath 'dist/Vector1A-1.6.0-alpha85-source-windows.zip' -DestinationPath $check
+          $entry = Join-Path $check 'Vector1A-1.6.0-alpha85/standalone_entry.py'
+          python -I $entry --smoke-test
+          if ($LASTEXITCODE -ne 0) { throw 'Source entry-point smoke test failed' }
+      - name: Publish source prerelease at this tested commit
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.6.0-alpha85 'dist/Vector1A-1.6.0-alpha85-source-windows.zip' 'dist/Vector1A-1.6.0-alpha85-source-windows.zip.sha256' --repo "$env:GITHUB_REPOSITORY" --target "$env:GITHUB_SHA" --prerelease --latest=false --title 'Vector 1A — Custom Curves preview 2: responsive connections' --notes-file RELEASE_NOTES_1.6.0-alpha85.md
+          if ($LASTEXITCODE -ne 0) { throw 'Source release creation failed; existing releases were not overwritten' }

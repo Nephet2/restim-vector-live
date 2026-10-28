@@ -1,13 +1,12 @@
-# Vector 1A 1.6.0-alpha84
+# Vector 1A 1.6.0-alpha85
 
-Fixes secondary/prostate carrier frequency: both ReStim outputs now use C0. If you used the F0 workaround, restore the prostate ReStim carrier mapping to C0.
+Adds compact Min/Max response controls for volume, carrier frequency and pulse settings, a scrollable main view, outgoing primary/prostate V0 readouts, and spatial intensity matching that respects the rest response and return ramp.
 
-Adds tunable E1-E4 Custom curves to alpha82, fixes interface stalls while ReStim is unavailable, and places Edit Custom curves beside Spatial model. Run `start-vector1a.bat` for the normal source application. See CUSTOM_PREVIEW.md for setup, test launchers and validation. No portable EXE is included.
-
+See [alpha85 release notes](RELEASE_NOTES_1.6.0-alpha85.md) for changes, volume semantics and installation. Retains alpha84 Custom Curves, responsive connections and C0 carrier mapping on both outputs.
 
 # Vector 1A
 
-**Alpha84 source release:** extract the complete `source-windows.zip` and run `start-vector1a.bat` with Python 3.11+. Python 3.13 x64 is recommended for bundled Pillow. Settings are in `profile/Vector1A/settings.json` beside the launcher. Copy that file from your previous installation after closing Vector. This release has no portable executable.
+**Alpha85 source release:** extract the complete `source-windows.zip` and run `start-vector1a.bat` with Python 3.11+. Python 3.13 x64 is recommended for bundled Pillow. Settings are in `profile/Vector1A/settings.json` beside the launcher. Copy that file from your previous installation after closing Vector. This release has no portable executable.
 
 
 Vector 1A is a standalone live bridge from MultiFunPlayer T-code to one or two ReStim
@@ -16,7 +15,7 @@ ordinary positional `L0` stream, Vector remains the deterministic motion generat
 MFP supplies a clearly authored ReStim axis set, Vector can automatically pass those axes
 through on the same delayed timeline and generate only the missing axes.
 
-Current development build: **1.6.0-alpha84**.
+Current development build: **1.6.0-alpha85**.
 
 See [Alpha79 release notes](RELEASE_NOTES_1.6.0-alpha79.md) for Howl conversion,
 intensity matching, optional TCode output, automatic ready startup and Civet pressure controls.

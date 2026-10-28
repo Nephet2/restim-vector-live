@@ -12,6 +12,7 @@ from unittest.mock import patch
 import socket
 import tkinter as tk
 from vector1a.app import VectorApp
+from vector1a import __version__
 
 
 def blocked(*args, **kwargs):
@@ -33,8 +34,11 @@ def main():
             guards.enter_context(patch(target))
         root = tk.Tk()
         app = VectorApp(root)
-        root.title('Vector 1A - alpha82 Custom preview - UI ONLY / CONNECTIONS DISABLED')
-        root.geometry('1360x900')
+        root.title(f'Vector 1A {__version__} - UI ONLY / CONNECTIONS DISABLED')
+        root.geometry('1360x1000')
+        for name in ('Volume response', 'Frequency', 'Pulse frequency', 'Pulse rise time', 'Pulse width'):
+            app.sections[name].collapsed = False
+            app.sections[name]._render()
         if '--smoke-test' in sys.argv:
             root.after(300, app.show_custom_curves)
             root.after(1500, app.close)

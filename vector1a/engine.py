@@ -11,6 +11,7 @@ from typing import Callable
 from .motion import MotionCalculator, MotionMode, MotionParameters, SegmentState
 from .variety import speed_linked_depth
 from .modifier import ModifierValues, interpolate, transform_segment
+from .output_ranges import scale_response, unit_range
 
 
 @dataclass(frozen=True)
@@ -94,6 +95,8 @@ class VectorEngine:
         self._stroke_sequence = 0
         self._completed_strokes: deque[SegmentState] = deque(maxlen=256)
         self._known_stroke_bounds: tuple[float, float] | None = None
+        self.volume_response_min, self.volume_response_max = 0.0, 1.0
+        self.frequency_min, self.frequency_max = 0.0, 1.0
         self.dynamic_volume = True
         self.volume_rest_level = 0.4
         self.volume_ramp_speed_ratio = 20.0
@@ -150,6 +153,8 @@ class VectorEngine:
     def configure(self, *, rate_hz: int, lookahead_seconds: float, volume: float,
                   mode: MotionMode, params: MotionParameters,
                   dynamic_volume: bool = True, volume_rest_level: float = 0.4,
+                  volume_response_min: float = 0.0, volume_response_max: float = 1.0,
+                  frequency_min: float = 0.0, frequency_max: float = 1.0,
                   volume_ramp_speed_ratio: float = 20.0,
                   volume_ramp_up_seconds: float = 1.0,
                   frequency_ramp_level: float = 1.0,
@@ -183,6 +188,8 @@ class VectorEngine:
             self.volume = min(1.0, max(0.0, float(volume)))
             self.mode = mode
             self.params = params
+            self.volume_response_min, self.volume_response_max = unit_range(volume_response_min, volume_response_max)
+            self.frequency_min, self.frequency_max = unit_range(frequency_min, frequency_max)
             self.dynamic_volume = bool(dynamic_volume)
             self.volume_rest_level = min(1.0, max(0.0, float(volume_rest_level)))
             self.volume_ramp_speed_ratio = min(40.0, max(10.0, float(volume_ramp_speed_ratio)))
@@ -719,16 +726,25 @@ class VectorEngine:
         self._calculate_and_queue(scheduled_at)
         self._release_due(scheduled_at if release_at is None else release_at)
 
+    def _volume_response(self, value: float) -> float:
+        return self.volume * scale_response(value, self.volume_response_min, self.volume_response_max)
+
+    def volume_rest_response(self) -> float:
+        """Normalized idle floor for primary spatial intensity matching."""
+        generated = (((self.volume_ramp_speed_ratio - 1.0) / self.volume_ramp_speed_ratio)
+                     * self.volume_rest_level if self.dynamic_volume else 0.0)
+        return scale_response(generated, self.volume_response_min, self.volume_response_max)
+
     def _calculate_volume(self, at_time: float, speed_percent: float) -> float:
         if not self.dynamic_volume:
-            return self.volume
+            return self._volume_response(1.0)
         active = ((at_time - self._last_input_time) <= self.volume_idle_seconds
                   and speed_percent > 0.5)
         ratio = self.volume_ramp_speed_ratio
         generated = ((ratio - 1.0) + min(1.0, max(0.0, speed_percent / 100.0))) / ratio
         if not active:
             self._volume_was_active = False
-            return self.volume * generated * self.volume_rest_level
+            return self._volume_response(generated * self.volume_rest_level)
         if not self._volume_was_active:
             self._volume_active_since = at_time
             self._volume_was_active = True
@@ -738,14 +754,15 @@ class VectorEngine:
             progress = min(1.0, max(0.0, (at_time - self._volume_active_since) /
                                         self.volume_ramp_up_seconds))
             attack = self.volume_rest_level + (1.0 - self.volume_rest_level) * progress
-        return self.volume * generated * attack
+        return self._volume_response(generated * attack)
 
     def _calculate_frequency(self, at_time: float, speed_percent: float) -> float:
         speed = (speed_percent / 100.0
                  if (at_time - self._last_input_time) <= self.volume_idle_seconds else 0.0)
         ratio = self.frequency_ramp_speed_ratio
-        return min(1.0, max(0.0,
+        value = min(1.0, max(0.0,
             (self.frequency_ramp_level * (ratio - 1.0) + speed) / ratio))
+        return scale_response(value, self.frequency_min, self.frequency_max)
 
     def _calculate_pulse_frequency(self, at_time: float, speed_percent: float,
                                    alpha: float) -> float:
@@ -864,7 +881,7 @@ class VectorEngine:
                   and speed_percent > 0.5)
         if not active:
             generated *= self.prostate_rest_level
-        return min(self.volume, max(0.0, self.volume * generated))
+        return self._volume_response(generated)
 
     def _loop(self) -> None:
         next_tick = self.clock()
