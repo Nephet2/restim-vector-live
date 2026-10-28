@@ -1,4 +1,4 @@
-# Vector 1A — Custom Curves preview 2 (alpha82 base)
+# Vector 1A — Vector 1A alpha84 (alpha82 base)
 
 ## Changes
 - Fixes repeated UI freezes when a ReStim port is incorrect, unavailable or timing out. Health telemetry no longer waits for the socket I/O lock.
