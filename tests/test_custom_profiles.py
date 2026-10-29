@@ -6,6 +6,7 @@ from unittest.mock import Mock
 from vector1a.app import VectorApp
 from vector1a.custom_spatial import make_preset, validate_curves, validated_profiles
 from vector1a.director import DirectorRequest
+from vector1a.parameter_curves import default_curves
 
 class Var:
  def __init__(self,value):self.value=value
@@ -14,6 +15,8 @@ class Var:
 
 def stub():
  app=object.__new__(VectorApp);app._custom_curves=make_preset('Moving focus');app._custom_profiles={};app._custom_curve_editor=None
+ app._parameter_profiles={}
+ app._parameter_curves=default_curves()
  app.four_phase_spatial_model=Var('Moving focus');app.director_primary_spatial=Var('top_moving_focus')
  app._save_settings=Mock();app.apply_config=Mock();return app
 

@@ -12,6 +12,7 @@ from .motion import MotionCalculator, MotionMode, MotionParameters, SegmentState
 from .variety import speed_linked_depth
 from .modifier import ModifierValues, interpolate, transform_segment
 from .output_ranges import scale_response, unit_range
+from .parameter_curves import default_curves, validate_parameter_curves, shape_output
 
 
 @dataclass(frozen=True)
@@ -131,6 +132,8 @@ class VectorEngine:
         self.speed_linked_variation = True
         self.variation_full_speed_percent = 35.0
         self.variation_fade_seconds = 0.75
+        self.parameter_curves = default_curves()
+        self._parameter_curve_live = {}
         self.spatial_curve = "Linear"
         self.spatial_blend = 0.0
         self._variation_depth = 0.0
@@ -180,8 +183,11 @@ class VectorEngine:
                   variation_full_speed_percent: float = 35.0,
                   variation_fade_seconds: float = .75,
                   spatial_curve: str = "Linear",
-                  spatial_blend: float = 0.0) -> None:
+                  spatial_blend: float = 0.0,
+                  parameter_curves: dict | None = None) -> None:
         with self._lock:
+            if parameter_curves is not None:
+                self.parameter_curves = validate_parameter_curves(parameter_curves)
             mode_changed = mode != self.mode
             self.rate_hz = max(1, min(200, int(rate_hz)))
             self.lookahead_seconds = max(0.05, min(10.0, float(lookahead_seconds)))
@@ -726,14 +732,19 @@ class VectorEngine:
         self._calculate_and_queue(scheduled_at)
         self._release_due(scheduled_at if release_at is None else release_at)
 
-    def _volume_response(self, value: float) -> float:
-        return self.volume * scale_response(value, self.volume_response_min, self.volume_response_max)
+    def _volume_response(self, value: float, parameter: str = 'primary_volume') -> float:
+        response = scale_response(value, self.volume_response_min, self.volume_response_max)
+        shaped = self._shape_parameter(parameter, response, self.volume_response_min, self.volume_response_max)
+        return self.volume * shaped
 
     def volume_rest_response(self) -> float:
         """Normalized idle floor for primary spatial intensity matching."""
         generated = (((self.volume_ramp_speed_ratio - 1.0) / self.volume_ramp_speed_ratio)
                      * self.volume_rest_level if self.dynamic_volume else 0.0)
-        return scale_response(generated, self.volume_response_min, self.volume_response_max)
+        response = scale_response(generated, self.volume_response_min, self.volume_response_max)
+        # Reading the idle bound must not replace the live current-volume marker.
+        return shape_output(self.parameter_curves['primary_volume'], response,
+                            self.volume_response_min, self.volume_response_max)[0]
 
     def _calculate_volume(self, at_time: float, speed_percent: float) -> float:
         if not self.dynamic_volume:
@@ -756,13 +767,28 @@ class VectorEngine:
             attack = self.volume_rest_level + (1.0 - self.volume_rest_level) * progress
         return self._volume_response(generated * attack)
 
+    def set_parameter_curves(self, curves):
+        curves = validate_parameter_curves(curves)
+        with self._lock:
+            self.parameter_curves = curves
+
+    def parameter_curve_snapshot(self):
+        with self._lock:
+            return dict(self._parameter_curve_live)
+
+    def _shape_parameter(self, name, value, low, high):
+        output, drive = shape_output(self.parameter_curves[name], value, low, high)
+        self._parameter_curve_live[name] = (drive, output, low, high)
+        return output
+
     def _calculate_frequency(self, at_time: float, speed_percent: float) -> float:
         speed = (speed_percent / 100.0
                  if (at_time - self._last_input_time) <= self.volume_idle_seconds else 0.0)
         ratio = self.frequency_ramp_speed_ratio
         value = min(1.0, max(0.0,
             (self.frequency_ramp_level * (ratio - 1.0) + speed) / ratio))
-        return scale_response(value, self.frequency_min, self.frequency_max)
+        return self._shape_parameter('frequency',
+            scale_response(value, self.frequency_min, self.frequency_max), self.frequency_min, self.frequency_max)
 
     def _calculate_pulse_frequency(self, at_time: float, speed_percent: float,
                                    alpha: float) -> float:
@@ -782,16 +808,18 @@ class VectorEngine:
                 progress = min(1.0, max(0.0,
                     (at_time - self._pulse_active_since) / self.volume_ramp_up_seconds))
                 combined *= self.volume_rest_level + (1.0 - self.volume_rest_level) * progress
-        return self.pulse_frequency_min + combined * (
-            self.pulse_frequency_max - self.pulse_frequency_min)
+        return self._shape_parameter('pulse_frequency',
+            self.pulse_frequency_min + combined * (self.pulse_frequency_max - self.pulse_frequency_min),
+            self.pulse_frequency_min, self.pulse_frequency_max)
 
     def _calculate_pulse_rise_time(self, speed_percent: float) -> float:
         inverted_ramp = 1.0 - self.frequency_ramp_level
         inverted_speed = 1.0 - min(1.0, max(0.0, speed_percent / 100.0))
         ratio = self.pulse_rise_ratio
         combined = (inverted_ramp * (ratio - 1.0) + inverted_speed) / ratio
-        return self.pulse_rise_min + combined * (
-            self.pulse_rise_max - self.pulse_rise_min)
+        return self._shape_parameter('pulse_rise_time',
+            self.pulse_rise_min + combined * (self.pulse_rise_max - self.pulse_rise_min),
+            self.pulse_rise_min, self.pulse_rise_max)
 
     def _calculate_pulse_width(self, at_time: float, speed_percent: float,
                                output_l0: float) -> float:
@@ -805,7 +833,9 @@ class VectorEngine:
         if not active:
             self._width_was_active = False
             combined *= self.volume_rest_level
-            return min(self.pulse_width_max, max(self.pulse_width_min, combined))
+            return self._shape_parameter('pulse_width',
+                min(self.pulse_width_max, max(self.pulse_width_min, combined)),
+                self.pulse_width_min, self.pulse_width_max)
         if not self._width_was_active:
             self._width_active_since = at_time
             self._width_was_active = True
@@ -816,7 +846,9 @@ class VectorEngine:
         # Unlike upstream's intermediate input limit, Vector exposes Min/Max as
         # a live controller-adjustable output range. Enforce it after blending
         # so the actual P1 command always remains inside the displayed range.
-        return min(self.pulse_width_max, max(self.pulse_width_min, combined))
+        return self._shape_parameter('pulse_width',
+                min(self.pulse_width_max, max(self.pulse_width_min, combined)),
+                self.pulse_width_min, self.pulse_width_max)
 
     def _calculate_prostate(self, stroke: SegmentState, at_time: float) -> tuple[float, float]:
         # RFP tear-shaped prostate path is generated from inverted L0.
@@ -881,7 +913,7 @@ class VectorEngine:
                   and speed_percent > 0.5)
         if not active:
             generated *= self.prostate_rest_level
-        return self._volume_response(generated)
+        return self._volume_response(generated, 'prostate_volume')
 
     def _loop(self) -> None:
         next_tick = self.clock()

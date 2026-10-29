@@ -10,6 +10,9 @@ from tkinter import filedialog, messagebox, ttk
 
 from .engine import OutputSample, VectorEngine
 from .range_bar import RangeBar
+from .parameter_curves import (default_curves, validate_parameter_curves,
+                               validate_parameter_profile, validated_parameter_profiles)
+from .parameter_curve_editor import ParameterCurveEditor
 from .output_ranges import match_volume_response
 from .pressure_control import PressureControl
 from .custom_spatial import CurveEditor, make_preset, validate_curves, evaluate_curves, validate_profile, validated_profiles
@@ -360,7 +363,7 @@ class VectorApp:
         self.howl_balance_b = tk.DoubleVar(value=.5)
         self.howl_scaling = tk.DoubleVar(value=1)
         self.howl_position_strength = tk.DoubleVar(value=1)
-        self.match_spatial_intensity = tk.BooleanVar(value=True)
+        self.match_spatial_intensity = tk.BooleanVar(value=False)
         self.four_phase_spatial_model = tk.StringVar(value="Moving focus")
         self.four_phase_tip_retention = tk.DoubleVar(value=.80)
         self.four_phase_spread_softness = tk.DoubleVar(value=.20)
@@ -409,7 +412,7 @@ class VectorApp:
         self.jitter_enabled = tk.BooleanVar(value=False)
         self.jitter_amplitude = tk.DoubleVar(value=0.02)
         self.jitter_cycle_seconds = tk.DoubleVar(value=1.0)
-        self.speed_linked_variation = tk.BooleanVar(value=True)
+        self.speed_linked_variation = tk.BooleanVar(value=False)
         self.variation_full_speed_percent = tk.DoubleVar(value=35.0)
         self.variation_fade_seconds = tk.DoubleVar(value=.75)
         self.variation_depth_live = tk.StringVar(value="Effect depth 0%")
@@ -530,6 +533,9 @@ class VectorApp:
         self.xinput = XInputController(self._xinput_buttons_threaded, self._xinput_status_threaded,
                                        self._xinput_state_threaded)
         self.sections = {}
+        self._parameter_profiles = {}
+        self._parameter_curves = default_curves()
+        self._parameter_curve_editor = None
         self._custom_curves = make_preset("Moving focus")
         self._custom_profiles = {}
         self._active_custom_profile_name = None
@@ -795,17 +801,19 @@ class VectorApp:
                     textvariable=self.four_phase_volume_ceiling, width=8).grid(
                         row=0, column=8)
 
-        ttk.Label(volume_frame, text="Response  0").grid(row=1, column=0, sticky="e", pady=(8, 0))
+        self.response_curves_button = ttk.Button(volume_frame,
+            text="Edit primary response curves", command=self.show_parameter_curves)
+        self.response_curves_button.grid(row=1, column=0, sticky="w", pady=(4, 0))
         self.volume_response_bar = RangeBar(volume_frame,
             minimum_var=self.volume_response_min, maximum_var=self.volume_response_max,
             command=self.apply_config)
-        self.volume_response_bar.grid(row=1, column=1, columnspan=4, padx=8, pady=(8, 0), sticky="w")
+        self.volume_response_bar.grid(row=1, column=1, columnspan=4, padx=8, pady=(4, 0), sticky="w")
         self.volume_response_value = tk.StringVar(value="0.0000")
-        ttk.Label(volume_frame, text="1").grid(row=1, column=5, pady=(8, 0))
+        ttk.Label(volume_frame, text="1").grid(row=1, column=5, pady=(4, 0))
         ttk.Label(volume_frame, textvariable=self.volume_response_value,
-                  font=("TkDefaultFont", 10, "bold")).grid(row=1, column=6, pady=(8, 0))
+                  font=("TkDefaultFont", 10, "bold")).grid(row=1, column=6, pady=(4, 0))
         volume_range_fields = ttk.Frame(volume_frame)
-        volume_range_fields.grid(row=1, column=7, columnspan=2, sticky="w", padx=(8, 0), pady=(8, 0))
+        volume_range_fields.grid(row=1, column=7, columnspan=2, sticky="w", padx=(8, 0), pady=(4, 0))
         for col, (label, variable) in enumerate((("Min", self.volume_response_min),
                                                 ("Max", self.volume_response_max))):
             ttk.Label(volume_range_fields, text=label).grid(row=0, column=col*2, padx=(0,4))
@@ -1957,6 +1965,41 @@ class VectorApp:
         if editor and editor.window.winfo_exists():
             editor.sync_loaded_profile(name)
 
+    def save_parameter_profile(self, name, description):
+        name, profile = validate_parameter_profile(name, description, self._parameter_curves)
+        if name not in self._parameter_profiles and len(self._parameter_profiles) >= 100:
+            raise ValueError("At most 100 parameter profiles can be saved")
+        self._parameter_profiles[name] = profile
+        self._save_settings()
+        return name
+
+    def apply_parameter_profile(self, name):
+        if name not in self._parameter_profiles:
+            raise ValueError("Select a saved parameter profile")
+        curves = validate_parameter_curves(self._parameter_profiles[name]['curves'])
+        self.engine.set_parameter_curves(curves)
+        self._parameter_curves = curves
+        self._save_settings()
+
+    def update_parameter_profile_description(self, name, description):
+        if name not in self._parameter_profiles:
+            raise ValueError("Select a saved parameter profile")
+        _, profile = validate_parameter_profile(name, description, self._parameter_profiles[name]['curves'])
+        self._parameter_profiles[name] = profile
+        self._save_settings()
+
+    def show_parameter_curves(self, parameter=None) -> None:
+        if self._parameter_curve_editor and self._parameter_curve_editor.window.winfo_exists():
+            self._parameter_curve_editor.window.lift()
+            if parameter:
+                self._parameter_curve_editor.focus_parameter(parameter)
+            return
+        self._parameter_curve_editor = ParameterCurveEditor(self)
+        if parameter:
+            self._parameter_curve_editor.window.after_idle(
+                lambda: self._parameter_curve_editor.focus_parameter(parameter)
+                if self._parameter_curve_editor else None)
+
     def show_custom_curves(self) -> None:
         if self._custom_curve_editor and self._custom_curve_editor.window.winfo_exists():
             self._custom_curve_editor.window.lift()
@@ -2206,7 +2249,8 @@ class VectorApp:
                                   variation_full_speed_percent=self.variation_full_speed_percent.get(),
                                   variation_fade_seconds=self.variation_fade_seconds.get(),
                                   spatial_curve=self.four_phase_spatial_curve.get(),
-                                  spatial_blend=self.four_phase_spatial_blend.get())
+                                  spatial_blend=self.four_phase_spatial_blend.get(),
+                                  parameter_curves=self._parameter_curves)
             self.engine.configure_modifier(
                 enabled=self.modifier_enabled.get(),
                 stroke_range=self.modifier_stroke_range.get(),
@@ -3073,6 +3117,11 @@ class VectorApp:
                     getattr(self, name).set(saved[name])
                 except tk.TclError:
                     pass
+        try:
+            self._parameter_curves = validate_parameter_curves(saved.get("parameter_response_curves", default_curves()))
+        except (ValueError, TypeError):
+            self._parameter_curves = default_curves()
+        self._parameter_profiles = validated_parameter_profiles(saved.get("parameter_response_profiles", {}))
         if "custom_spatial_curves" in saved:
             try:
                 self._custom_curves = validate_curves(saved["custom_spatial_curves"])
@@ -3132,6 +3181,8 @@ class VectorApp:
 
     def _save_settings(self) -> None:
         values = {name: getattr(self, name).get() for name in self.SETTINGS_FIELDS}
+        values["parameter_response_profiles"] = validated_parameter_profiles(self._parameter_profiles)
+        values["parameter_response_curves"] = validate_parameter_curves(self._parameter_curves)
         values["custom_spatial_curves"] = self._custom_curves
         values["custom_spatial_profiles"] = self._custom_profiles
         values["active_custom_profile"] = self._active_custom_profile_name

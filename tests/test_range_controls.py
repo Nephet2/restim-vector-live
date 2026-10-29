@@ -128,7 +128,7 @@ def test_full_app_load_save_and_compact_bar_layout():
     from contextlib import ExitStack
     from unittest.mock import patch
     from vector1a.app import VectorApp
-    saved = {"volume_response_min": .15, "volume_response_max": .75,
+    saved = {"speed_linked_variation": True, "match_spatial_intensity": True, "volume_response_min": .15, "volume_response_max": .75,
              "frequency_min": .2, "frequency_max": .9,
              "pulse_frequency_min": .25, "pulse_frequency_max": .85}
     root = tk.Tk()
@@ -181,6 +181,8 @@ def test_full_app_load_save_and_compact_bar_layout():
             root.update()
             assert app.main_canvas.bbox("all")[3] < before
             app.apply_config()
+            assert app.match_spatial_intensity.get() is True
+            assert app.speed_linked_variation.get() is True
             assert app.engine.volume_response_min == .15
             assert app.engine.volume_response_max == .75
             assert app.engine.frequency_min == .2

@@ -39,8 +39,10 @@ def main():
         for name in ('Volume response', 'Frequency', 'Pulse frequency', 'Pulse rise time', 'Pulse width'):
             app.sections[name].collapsed = False
             app.sections[name]._render()
+        if '--curves' in sys.argv:
+            root.after(300, app.show_parameter_curves)
         if '--smoke-test' in sys.argv:
-            root.after(300, app.show_custom_curves)
+            root.after(300, app.show_parameter_curves)
             root.after(1500, app.close)
         root.mainloop()
 
