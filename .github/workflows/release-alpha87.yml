@@ -36,7 +36,8 @@ jobs:
           $version = python -c "from vector1a import __version__; print(__version__)"
           if ($version -ne '1.6.0-alpha87') { throw 'This workflow only publishes alpha87' }
       - name: Download hash-locked Windows dependencies
-        run: python -m pip download --no-deps --only-binary=:all: --require-hashes -r packaging/windows-py313-requirements.txt --dest wheels
+        run: |
+          python -m pip download --no-deps --only-binary=:all: --require-hashes -r packaging/windows-py313-requirements.txt --dest wheels
       - name: Build and inspect the source package
         run: |
           python packaging/build_custom_source.py --wheel-dir wheels --output dist
