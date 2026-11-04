@@ -35,6 +35,7 @@ def test_connect_click_reads_tk_values_on_caller_and_returns_while_attempt_block
     actions=ConnectionActions(NS(connect=connect,disconnect=lambda:None),lambda text:None,'test')
     app=object.__new__(VectorApp);app._connection_actions={'primary':actions}
     app.restim_host=Var('127.0.0.1');app.restim_port=Var(12368)
+    app.prostate_host=Var('127.0.0.1');app.prostate_port=Var(12350)
     try:
         start=time.monotonic();app.connect_restim();assert time.monotonic()-start<.1
         assert entered.wait(1);assert seen==[('127.0.0.1',12368)]

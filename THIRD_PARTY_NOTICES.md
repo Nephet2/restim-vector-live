@@ -77,3 +77,7 @@ SOFTWARE.
 ## Alpha81 development acknowledgements
 
 Thanks to Senorgif33 (https://github.com/Senorgif33/restim-vector-live) for the socket-status callback lock-inversion finding and Windows executable distribution example. Alpha81 implements callback deferral on the alpha80 networking baseline and an independent portable executable build.
+
+## v87 Windows dependency bundle
+
+Pillow, Bleak, typing_extensions and PyWinRT Windows/runtime wheels are listed with exact versions and hashes in packaging/windows-py313-requirements.txt and windows-py313-wheels.json. Their upstream license and package metadata files are retained under dependencies/*.dist-info/ in the release ZIP.

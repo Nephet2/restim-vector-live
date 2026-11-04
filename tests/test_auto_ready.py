@@ -13,6 +13,8 @@ class AutoReadyTests(unittest.TestCase):
         app.resume = Mock()
         app.restim_host = Mock(get=lambda: '127.0.0.1')
         app.restim_port = Mock(get=lambda: 12346)
+        app.prostate_host = Mock(get=lambda: '127.0.0.1')
+        app.prostate_port = Mock(get=lambda: 12350)
         app.restim = Mock(connected=False)
         app._automatic_ready_stop = Mock()
         app._automatic_ready_stop.is_set.return_value = False

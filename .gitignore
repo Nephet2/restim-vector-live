@@ -16,3 +16,7 @@ settings-howl.json
 vector1a/civet-pressure.json
 
 dist-exe/
+
+dependencies/
+*.egg-info/
+wheels/

@@ -86,7 +86,10 @@ class Civet:
                     self.status = 'Disconnected'
 
     async def _run(self):
-        from bleak import BleakScanner, BleakClient
+        try:
+            from bleak import BleakScanner, BleakClient
+        except ModuleNotFoundError as exc:
+            raise RuntimeError("Civet Bluetooth support is missing for this Python. Use Windows source release with Python 3.13 x64 and its bundled dependencies.") from exc
         found = await BleakScanner.discover(timeout=6, return_adv=True)
         if self.stop_event.is_set():
             return

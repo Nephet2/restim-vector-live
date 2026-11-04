@@ -1,0 +1,11 @@
+bleak==3.0.2
+typing_extensions==4.16.0
+winrt-Windows.Devices.Bluetooth==4!10.0.28000.2957
+winrt-Windows.Devices.Bluetooth.Advertisement==4!10.0.28000.2957
+winrt-Windows.Devices.Bluetooth.GenericAttributeProfile==4!10.0.28000.2957
+winrt-Windows.Devices.Enumeration==4!10.0.28000.2957
+winrt-Windows.Devices.Radios==4!10.0.28000.2957
+winrt-Windows.Foundation==4!10.0.28000.2957
+winrt-Windows.Foundation.Collections==4!10.0.28000.2957
+winrt-Windows.Storage.Streams==4!10.0.28000.2957
+winrt-runtime==4.1.0

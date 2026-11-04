@@ -18,7 +18,7 @@ class ParameterCurveEditor:
         self.opening_curves = validate_parameter_curves(self.draft)
         self.save_timer = None
         self.window = tk.Toplevel(app.root)
-        self.window.title('Parameter response curves')
+        self.window.title('Parameter response curves - preview')
         self.window.geometry('1360x850')
         self.window.minsize(1120, 740)
         self.window.configure(bg=BG)
@@ -42,7 +42,7 @@ class ParameterCurveEditor:
         self.profile_box.pack(side='left', padx=(12,6))
         self.profile_box.bind('<<ComboboxSelected>>',self.select_profile)
         ttk.Button(row,text='Load profile',command=self.load_profile).pack(side='left')
-        self.profile_status=tk.StringVar(value='Profiles save all six shapes; Min/Max ranges stay unchanged.')
+        self.profile_status=tk.StringVar(value='Load applies six shapes LIVE; ranges and other settings stay unchanged.')
         tk.Label(row,textvariable=self.profile_status,bg=CARD,fg=MUTED).pack(side='left',padx=12)
         row=tk.Frame(profiles,bg=CARD);row.pack(fill='x',pady=(6,0))
         self.profile_name,self.profile_description=tk.StringVar(),tk.StringVar()

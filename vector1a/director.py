@@ -105,7 +105,7 @@ class _Handler(BaseHTTPRequestHandler):
                 "/v1/preset", "/v1/rolling-variety", "/v1/neutral", "/v1/stop", "/v1/resume",
                 "/v1/semantic/texture", "/v1/semantic/primary-spatial",
                 "/v1/semantic/secondary-spatial", "/v1/semantic/variation",
-                "/v1/semantic/top-focus", "/v1/semantic/bottom-focus",
+                "/v1/semantic/top-focus", "/v1/semantic/bottom-focus", "/v1/semantic/tempo",
                 "/v1/spatial-gain/top", "/v1/spatial-gain/bottom",
                 "/v1/generated-motion/plan", "/v1/generated-motion/hold",
                 "/v1/generated-motion/resume", "/v1/generated-motion/authored",

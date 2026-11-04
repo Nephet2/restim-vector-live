@@ -128,7 +128,7 @@ def test_full_app_load_save_and_compact_bar_layout():
     from contextlib import ExitStack
     from unittest.mock import patch
     from vector1a.app import VectorApp
-    saved = {"speed_linked_variation": True, "match_spatial_intensity": True, "volume_response_min": .15, "volume_response_max": .75,
+    saved = {"match_spatial_intensity": True, "volume_response_min": .15, "volume_response_max": .75,
              "frequency_min": .2, "frequency_max": .9,
              "pulse_frequency_min": .25, "pulse_frequency_max": .85}
     root = tk.Tk()
@@ -152,10 +152,10 @@ def test_full_app_load_save_and_compact_bar_layout():
                 root.update()
                 for bar in bars:
                     assert bar.winfo_height() <= 22
-                    assert bar.winfo_width() == 522
+                    assert bar.winfo_width() == (422 if bar is app.volume_response_bar else 522)
                     parent = bar.master
                     assert bar.winfo_x()+bar.winfo_width() <= parent.winfo_width()
-            assert app.volume_response_bar.master.winfo_height() <= 120
+            assert app.volume_response_bar.master.winfo_height() <= 340
             # A short window can reach diagnostics, with toolbar staying visible.
             root.geometry("1360x720")
             for name, section in app.sections.items():
@@ -182,7 +182,6 @@ def test_full_app_load_save_and_compact_bar_layout():
             assert app.main_canvas.bbox("all")[3] < before
             app.apply_config()
             assert app.match_spatial_intensity.get() is True
-            assert app.speed_linked_variation.get() is True
             assert app.engine.volume_response_min == .15
             assert app.engine.volume_response_max == .75
             assert app.engine.frequency_min == .2
@@ -268,7 +267,7 @@ def test_actual_primary_and_prostate_commands_and_relocated_control():
                     yield from descendants(child)
             controls=[w for w in descendants(root)
                       if w.winfo_class()=="TCheckbutton" and
-                      str(w.cget("text"))=="Match intensity across spatial modes"]
+                      str(w.cget("text"))=="Match Primary intensity across spatial modes"]
             assert len(controls)==1
             assert controls[0].master == app.volume_response_bar.master
             app.neutral()

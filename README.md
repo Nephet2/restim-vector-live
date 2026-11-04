@@ -1,14 +1,16 @@
-# Vector 1A 1.6.0-alpha86
+# Vector 1A 1.6.0-alpha87
 
-Adds live editable response curves for primary/prostate volume, carrier frequency, pulse frequency, rise time and width, with named profiles and a rotatable six-lane 3D composite. Open **Edit primary response curves** beside the Volume response bar.
+A clearer interface with fixed Start/Neutral/Stop controls, section shortcuts, model-specific spatial controls, compact response controls and connection diagnostics. Semantic profiles offer temporary authored-tempo choices of **0.5x, 1x and 2x**. The Windows source download includes Civet Bluetooth dependencies.
 
-**Match intensity across spatial modes** and **Scale optional effects with speed** default to unchecked for new profiles. Saved choices are retained.
-
-See [alpha86 release notes](RELEASE_NOTES_1.6.0-alpha86.md) for installation and response semantics. Retains alpha85 response ranges, scrolling and volume-matching fixes, alpha84 Custom spatial curves and responsive connections.
+See [v87 release notes](RELEASE_NOTES_1.6.0-alpha87.md) and [architecture overview](docs/ARCHITECTURE.md).
 
 # Vector 1A
 
-**Alpha86 source release:** extract the complete `source-windows.zip` and run `start-vector1a.bat` with Python 3.11+. Python 3.13 x64 is recommended for bundled Pillow. Settings are in `profile/Vector1A/settings.json` beside the launcher. Copy that file from your previous installation after closing Vector. This release has no portable executable.
+**v87 Windows source release:** extract the complete `source-windows.zip` and run `start-vector1a.bat`. Use **Python 3.13 x64** for bundled Pillow and Bluetooth components. This is a source release. A developer checkout or another Python version needs dependencies installed in its own environment (`.[preview]`).
+
+Close Vector before copying your previous `profile/Vector1A/settings.json` beside the new launcher. Public defaults remain Primary port 12346 and Prostate 12350; each ReStim instance needs its own port. Intensity matching and speed-linked optional effects remain off for new profiles; saved choices are retained.
+
+`CHECK_CIVET_DEPENDENCIES.bat` checks imports without scanning or connecting a device.
 
 
 Vector 1A is a standalone live bridge from MultiFunPlayer T-code to one or two ReStim
@@ -17,7 +19,7 @@ ordinary positional `L0` stream, Vector remains the deterministic motion generat
 MFP supplies a clearly authored ReStim axis set, Vector can automatically pass those axes
 through on the same delayed timeline and generate only the missing axes.
 
-Current development build: **1.6.0-alpha86**.
+Current development build: **1.6.0-alpha87**.
 
 See [Alpha79 release notes](RELEASE_NOTES_1.6.0-alpha79.md) for Howl conversion,
 intensity matching, optional TCode output, automatic ready startup and Civet pressure controls.

@@ -99,7 +99,6 @@ def test_editor_live_add_drag_remove_restore_and_settings():
             assert int(button.grid_info()['column'])<int(app.volume_response_bar.grid_info()['column'])
             assert button.winfo_x()+button.winfo_width()<=980
             assert app.match_spatial_intensity.get() is False
-            assert app.speed_linked_variation.get() is False
             editor.focus_parameter('pulse_width')
             root.update()
             assert editor.graph_canvas.yview()[0]>0

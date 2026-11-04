@@ -171,6 +171,7 @@ class CurveEditor:
         curves=validate_curves(self.app._custom_curves);curves[i]['interpolation']=self.modes[i].get()
         self.app._custom_curves=validate_curves(curves);self.changed()
     def changed(self):
+        self.app._publish_output_config()
         if self.save_timer:self.window.after_cancel(self.save_timer)
         self.save_timer=self.window.after(300,self.save)
         self.draw()

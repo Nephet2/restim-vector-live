@@ -1,24 +1,28 @@
-"""Build the public source ZIP from tracked files and a verified Pillow wheel."""
+"""Build the public source ZIP from tracked files and hash-locked Windows wheels."""
 from __future__ import annotations
 import argparse
 import ast
 import hashlib
+import json
 from pathlib import Path
 import subprocess
 import zipfile
 
-PILLOW_SHA256 = '4cf7fed4b4580601c4345ceb5d4cbf5a980d030fd5ad07c4d2ec589f95f09905'
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--pillow-wheel', type=Path, required=True)
+    parser.add_argument('--wheel-dir', type=Path, required=True)
     parser.add_argument('--output', type=Path, default=Path('dist'))
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
-    wheel = args.pillow_wheel.resolve()
-    if hashlib.sha256(wheel.read_bytes()).hexdigest() != PILLOW_SHA256:
-        raise SystemExit('Pillow wheel does not match the verified publisher hash')
+    locks = json.loads((root/'packaging/windows-py313-wheels.json').read_text())
+    wheels = []
+    for item in locks:
+        wheel = args.wheel_dir.resolve() / item['filename']
+        if hashlib.sha256(wheel.read_bytes()).hexdigest() != item['sha256']:
+            raise SystemExit('Release dependency hash mismatch: ' + wheel.name)
+        wheels.append(wheel)
     version = next(node.value.value for node in ast.parse((root/'vector1a/__init__.py').read_text()).body
                    if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id=='__version__' for t in node.targets))
     prefix = 'Vector1A-' + version
@@ -36,12 +40,19 @@ def main():
         try:data=data.decode('utf-8').replace('\r\n','\n').encode('utf-8')
         except UnicodeDecodeError:pass
         entries[prefix+'/'+path.as_posix()]=data
-    with zipfile.ZipFile(wheel) as source:
-        for name in source.namelist():
-            if name.endswith('/'):continue
-            if Path(name).is_absolute() or '..' in Path(name).parts:
-                raise SystemExit('Unexpected wheel path')
-            entries[prefix+'/dependencies/'+name]=source.read(name)
+    for wheel in wheels:
+        with zipfile.ZipFile(wheel) as source:
+            for name in source.namelist():
+                if name.endswith('/'):continue
+                if Path(name).is_absolute() or '..' in Path(name).parts or '\\' in name:
+                    raise SystemExit('Unexpected wheel path')
+                if '.data/' in name:
+                    raise SystemExit('Unsupported wheel installation scheme: ' + name)
+                key=prefix+'/dependencies/'+name
+                data=source.read(name)
+                if key in entries and entries[key] != data:
+                    raise SystemExit('Conflicting wheel files: ' + name)
+                entries[key]=data
     with zipfile.ZipFile(archive,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=9) as dest:
         for name,data in sorted(entries.items()):
             info=zipfile.ZipInfo(name,date_time=(2026,10,27,0,0,0))

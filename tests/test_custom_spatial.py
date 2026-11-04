@@ -20,14 +20,13 @@ class CustomCurveTests(unittest.TestCase):
   value=evaluate_curves(curves,.3)
   self.assertEqual(map_electrode_order(value,'BACD'),(value[1],value[0],value[2],value[3]))
  def test_vector_profile_uses_curve_and_static_electrode_order(self):
-  from vector1a.app import VectorApp
-  class Var:
-   def __init__(self,value): self.value=value
-   def get(self): return self.value
-  app=object.__new__(VectorApp);app.four_phase_spatial_model=Var('Custom')
-  app.electrode_order=Var('BACD');app._custom_curves=make_preset('Moving focus')
-  result,source,target,amount,kind=app._four_phase_profile(.37,1,70,.5,1)
-  self.assertEqual(result,map_electrode_order(evaluate_curves(app._custom_curves,.37),'BACD'))
+  from vector1a.output_composer import OutputComposer
+  from types import SimpleNamespace
+  curves=make_preset('Moving focus')
+  config=SimpleNamespace(four_phase_spatial_model='Custom',electrode_order='BACD',custom_curves=curves)
+  composer=OutputComposer(None,None,None,None,None,None)
+  result,source,target,amount,kind=composer._four_phase_profile(.37,1,70,.5,1,config=config)
+  self.assertEqual(result,map_electrode_order(evaluate_curves(curves,.37),'BACD'))
   self.assertEqual((source,target,amount,kind),('BACD','BACD',0.0,'custom'))
  def test_invalid_settings_rejected(self):
   with self.assertRaises(ValueError):validate_curves([])

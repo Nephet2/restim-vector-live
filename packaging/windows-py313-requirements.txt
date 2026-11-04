@@ -1,0 +1,13 @@
+# Windows x64 / CPython 3.13 release bundle; download with --no-deps --require-hashes.
+bleak==3.0.2 --hash=sha256:39092feb9e83f1df5ad2f88e837723c7211c982ce9e9cda6235104bc2ebe0d0d
+pillow==12.0.0 --hash=sha256:4cf7fed4b4580601c4345ceb5d4cbf5a980d030fd5ad07c4d2ec589f95f09905
+typing_extensions==4.16.0 --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8
+winrt-runtime==4.1.0 --hash=sha256:d1a9b4b609bece607051b55fa234043150e233a169cd004fd9dae30331562186
+winrt-Windows.Devices.Bluetooth==4!10.0.28000.2957 --hash=sha256:e39bcddf747396e2da78cb8c3d00c3e51214e5f1a9dc213fc009434c5264bbea
+winrt-Windows.Devices.Bluetooth.Advertisement==4!10.0.28000.2957 --hash=sha256:ddf2b1bd17e92a63c892273fceb2a4aba3263123cba7be979b51e93ff7d7e32c
+winrt-Windows.Devices.Bluetooth.GenericAttributeProfile==4!10.0.28000.2957 --hash=sha256:3e95b316a941106fd8193dead1a31e6abf9f118efceb58da2388e943fcf5f6d8
+winrt-Windows.Devices.Enumeration==4!10.0.28000.2957 --hash=sha256:0d76f1961bede3dfaf92939ca16edb882daa97bf6481e2dadc8174fec64e7a7e
+winrt-Windows.Devices.Radios==4!10.0.28000.2957 --hash=sha256:466c47b468c381192218a6f8744d3f2966b43acd710f004bb8a4b4e4e1bcbf88
+winrt-Windows.Foundation==4!10.0.28000.2957 --hash=sha256:0669de7ce480806a0f9a46d005837799e37f1738911b54c4bc04788b37974e69
+winrt-Windows.Foundation.Collections==4!10.0.28000.2957 --hash=sha256:0401c1b6ed512d1fdad8ba1571698e9000ebee6a69781db9a01994ffcc54a503
+winrt-Windows.Storage.Streams==4!10.0.28000.2957 --hash=sha256:e113832320f2e7f8b09cedfb400cb7eaf0ac769ad1f2038ddbe88801497916c4
