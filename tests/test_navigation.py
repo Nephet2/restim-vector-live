@@ -1,4 +1,4 @@
-import gc,os,socket,threading,unittest
+import os,socket,threading,unittest
 from contextlib import ExitStack
 from unittest.mock import patch,Mock
 import tkinter as tk
@@ -8,7 +8,6 @@ class NavigationTests(unittest.TestCase):
  def setUp(self):
   self.guards=ExitStack()
   self.addCleanup(self.guards.close)
-  gc.collect()  # Release previous Tcl interpreters before initializing another.
   self.root=tk.Tk();self.root.withdraw()
   self.addCleanup(lambda: NavigationTests.destroy_root(self))
   def blocked(*a,**k):raise AssertionError('External activity blocked during navigation test')

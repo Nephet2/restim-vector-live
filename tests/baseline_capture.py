@@ -1,5 +1,5 @@
 """Deterministic capture of real composition/serialization with all external I/O blocked."""
-import gc, json, os, socket, sys, threading
+import json, os, socket, sys, threading
 from pathlib import Path
 from contextlib import ExitStack
 from unittest.mock import patch
@@ -53,7 +53,6 @@ def capture(root_path, worker_check=False, extended=False):
    variants=('generated','authored','event','suppressed','pressure')
    if extended: variants+=('matching','texture','gains','custom_focus','sequence')
    for variant in variants:
-    gc.collect()
     root=tk.Tk(); root.withdraw()
     with patch.object(root,'after',return_value='disabled'):
      app=VectorApp(root)
@@ -154,7 +153,6 @@ def capture(root_path, worker_check=False, extended=False):
         app._send_sample(current)
       records[model+'/'+variant]=frames
      app.close()
-  gc.collect()
   root=tk.Tk();root.withdraw()
   with patch.object(root,'after',return_value='disabled'):
    app=VectorApp(root); frames={'primary':[],'prostate':[]}

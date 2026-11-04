@@ -1,17 +1,28 @@
-"""Keep cyclic Tcl interpreter finalization outside UI construction."""
-import gc
+"""Use one real Tcl/Tk interpreter for GUI tests in each pytest process."""
+import tkinter as tk
 import pytest
 
+@pytest.fixture(scope="session")
+def tk_host():
+    root = tk.Tk()
+    root.withdraw()
+    yield root
+    root.destroy()
+
 @pytest.fixture(autouse=True)
-def collect_tcl_interpreters_between_tests():
-    # A previous Tk root can be cyclic garbage after destroy(). Collecting it
-    # during initialization of another interpreter corrupts Tcl library loading.
-    gc.collect()
-    was_enabled = gc.isenabled()
-    gc.disable()
-    try:
-        yield
-    finally:
-        gc.collect()
-        if was_enabled:
-            gc.enable()
+def isolated_test_windows(monkeypatch, tk_host):
+    # Repeated Tk() construction leaves Tcl interpreters alive through widget
+    # variables. Real Toplevel windows isolate each layout on one interpreter,
+    # following Tk's single-interpreter lifetime rather than reloading Tcl.
+    windows = []
+    def new_window(*args, **kwargs):
+        window = tk.Toplevel(tk_host)
+        windows.append(window)
+        return window
+    monkeypatch.setattr(tk, "Tk", new_window)
+    yield
+    for window in windows:
+        try:
+            window.destroy()
+        except tk.TclError:
+            pass
