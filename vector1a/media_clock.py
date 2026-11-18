@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import socket
 import urllib.parse
 import urllib.request
 
@@ -224,6 +225,52 @@ def poll_mpc(host: str = "127.0.0.1", port: int = 13579) -> MediaSnapshot:
                              position_source=position_source)
     except Exception as exc:
         return MediaSnapshot("MPC", False, error=str(exc))
+
+
+def local_smb_path(resource: str) -> Path | None:
+    """Resolve a HereSphere SMB resource against this PC's Windows shares."""
+    if os.name != "nt":
+        return None
+    # HereSphere may send an SMB filename with a literal #.
+    uri = urllib.parse.urlsplit(resource, allow_fragments=False)
+    host = (uri.hostname or "").rstrip(".").casefold()
+    if not host or uri.port not in (None, 445):
+        return None
+    names = {socket.gethostname().rstrip(".").casefold(), "localhost", "127.0.0.1", "::1"}
+    if host not in names:
+        # HereSphere commonly addresses the share by the PC's LAN IP.
+        try:
+            names.update(item[4][0].split("%", 1)[0] for item in
+                         socket.getaddrinfo(socket.gethostname(), None))
+        except OSError:
+            pass
+    if host not in names:
+        return None
+
+    # HereSphere may encode the relative path in one URL segment, including its slashes.
+    parts = urllib.parse.unquote(uri.path, errors="strict").removeprefix("/").split("/")
+    if len(parts) < 2 or any(
+        not part or part.endswith((".", " ")) or any(c in part for c in '<>:"/\\|?*\x00')
+        for part in parts
+    ):
+        return None
+
+    import winreg
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                            r"SYSTEM\CurrentControlSet\Services\LanmanServer\Shares") as shares:
+            settings, _ = winreg.QueryValueEx(shares, parts[0])
+    except OSError:
+        return None
+    if not isinstance(settings, list):
+        return None
+    for setting in settings:
+        if setting.startswith("Path="):
+            root = Path(setting[5:])
+            if root.is_absolute():
+                return root.joinpath(*parts[1:])
+    return None
 
 
 def find_matching_funscript(media_path: str | None, library_dirs: list[str] | tuple[str, ...] = ()) -> str | None:

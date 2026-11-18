@@ -6,11 +6,16 @@ from dataclasses import dataclass
 import json
 import math
 import os
+import random
 import threading
 import time
 from typing import Callable
 
 from .media_clock import MediaSnapshot, find_matching_funscript, poll_mpc, poll_vlc
+from .motion import restim_arc
+
+
+KEYFRAME_ARC_REVERSAL_PROBABILITY = 0.075
 
 
 @dataclass(frozen=True)
@@ -22,9 +27,9 @@ class FunscriptAction:
 class FunscriptTimeline:
     """Read-only funscript timeline and lightweight MFP/L0 synchroniser.
 
-    The timeline never drives Vector output in this release.  It observes incoming
-    L0 to estimate media/script time, or can run an internal preview clock for
-    commissioning.  All summaries are deterministic and AI-independent.
+    The timeline observes incoming L0 to estimate media/script time and can
+    run an internal preview clock. The tempo transform can request positions
+    from the authored script.
     """
 
     CLOCK_AUTO = "Auto media player"
@@ -32,12 +37,16 @@ class FunscriptTimeline:
     CLOCK_MPC = "MPC direct"
     CLOCK_MFP = "MFP pattern sync"
     CLOCK_MANUAL = "Manual preview"
+    INTERPOLATIONS = ("Linear", "Gradient")
 
     def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
         self.clock = clock
         self._lock = threading.RLock()
         self._actions: list[FunscriptAction] = []
         self._times: list[float] = []
+        self._gradients: tuple[float, ...] = ()
+        self._arc_directions: tuple[int, ...] = ()
+        self._interpolation = "Linear"
         self._path: str = ""
         self._duration = 0.0
         self._clock_mode = self.CLOCK_MFP
@@ -69,6 +78,38 @@ class FunscriptTimeline:
         self._media_last_position: float | None = None
         self._media_progress_changed_at: float | None = None
 
+    def mfp_transport(self):
+        # Sample MPC-HC directly even when only MFP has the funscript loaded.
+        with self._lock:
+            snap = self._media_snapshot
+            received = self._media_snapshot_received_at
+            if (self._clock_mode not in (self.CLOCK_AUTO, self.CLOCK_MPC)
+                    or not snap or snap.player != "MPC" or not snap.connected
+                    or snap.position_seconds is None or not math.isfinite(snap.position_seconds)
+                    or self._media_clock_health == "stale" or received is None
+                    or self.clock() - received >= 1.5):
+                return None
+            state = str(snap.state or "").strip().lower()
+            playing = (state in ("playing", "play") and math.isfinite(snap.rate) and snap.rate > 0
+                       and (snap.duration_seconds is None or snap.duration_seconds <= 0
+                            or snap.position_seconds < snap.duration_seconds))
+            return {"playing": playing, "position": float(snap.position_seconds),
+                    "received_at": received, "source": snap.media_path or snap.title,
+                    "precise": snap.position_source == "position_ms", "rate": float(snap.rate)}
+
+    def passage_transport(self):
+        with self._lock:
+            snap = self._media_snapshot
+            valid = (self._clock_mode in (self.CLOCK_AUTO, self.CLOCK_MPC, self.CLOCK_VLC)
+                     and self._media_clock_health != "stale" and snap is not None
+                     and snap.connected and snap.position_seconds is not None
+                     and self._media_snapshot_received_at is not None
+                     and self.clock() - self._media_snapshot_received_at < 3.0)
+            return {"valid": bool(valid),
+                    "playing": bool(snap and str(snap.state).lower() in ("playing", "play")),
+                    "position_seconds": self.position_seconds() if valid else None,
+                    "source": self._last_media_path}
+
     @property
     def loaded(self) -> bool:
         with self._lock:
@@ -88,7 +129,9 @@ class FunscriptTimeline:
             try:
                 at = float(item["at"]) / 1000.0
                 pos = min(1.0, max(0.0, float(item["pos"]) / 100.0))
-            except (KeyError, TypeError, ValueError):
+            except (KeyError, TypeError, ValueError, OverflowError):
+                continue
+            if not math.isfinite(at):
                 continue
             if actions and at < actions[-1].at:
                 raise ValueError("funscript actions must be ordered by time")
@@ -99,6 +142,8 @@ class FunscriptTimeline:
         if len(actions) < 2:
             raise ValueError("funscript contains too few valid actions")
         duration = actions[-1].at
+        gradients = self._monotone_gradients(actions)
+        arc_directions = self._keyframe_arc_directions(actions)
         peak = 0.0
         amplitudes: list[float] = []
         for a, b in zip(actions, actions[1:]):
@@ -108,6 +153,8 @@ class FunscriptTimeline:
         with self._lock:
             self._actions = actions
             self._times = [x.at for x in actions]
+            self._gradients = gradients
+            self._arc_directions = arc_directions
             self._path = path
             self._duration = duration
             self._manual_position = 0.0
@@ -126,6 +173,8 @@ class FunscriptTimeline:
         with self._lock:
             self._actions = []
             self._times = []
+            self._gradients = ()
+            self._arc_directions = ()
             self._path = ""
             self._duration = 0.0
             self._live.clear()
@@ -142,6 +191,7 @@ class FunscriptTimeline:
                 "actions": len(self._actions),
                 "duration_seconds": round(self._duration, 3),
                 "clock_source": self._clock_mode,
+                "interpolation": self._interpolation,
                 "media_player": (self._media_snapshot.player if self._media_snapshot else None),
                 "media_connected": bool(self._media_snapshot and self._media_snapshot.connected),
                 "media_state": (self._media_snapshot.state if self._media_snapshot else None),
@@ -327,7 +377,29 @@ class FunscriptTimeline:
                 self._match_updated_at = now
                 self._match_locked(now)
 
-    def _interp_locked(self, seconds: float) -> float:
+    @staticmethod
+    def _monotone_gradients(actions: list[FunscriptAction]) -> tuple[float, ...]:
+        """Use the Signal Lab tangents in normalized L0 units per second."""
+        widths = [right.at - left.at for left, right in zip(actions, actions[1:])]
+        slopes = [(right.pos - left.pos) / width
+                  for left, right, width in zip(actions, actions[1:], widths)]
+        result = [0.0]
+        for index, (before, after) in enumerate(zip(slopes, slopes[1:])):
+            if before * after <= 0.0:
+                result.append(0.0)
+                continue
+            left, right = widths[index:index + 2]
+            first, second = 2 * right + left, right + 2 * left
+            result.append((first + second) / (first / before + second / after))
+        return (*result, 0.0)
+
+    def set_interpolation(self, interpolation: str) -> None:
+        if interpolation not in self.INTERPOLATIONS:
+            raise ValueError(f"Unknown interpolation: {interpolation}")
+        with self._lock:
+            self._interpolation = interpolation
+
+    def _interp_locked(self, seconds: float, *, gradient: bool = False) -> float:
         if not self._actions:
             return 0.5
         if seconds <= self._actions[0].at:
@@ -339,7 +411,14 @@ class FunscriptTimeline:
         b = self._actions[idx]
         span = max(1e-9, b.at - a.at)
         p = (seconds - a.at) / span
-        return a.pos + (b.pos - a.pos) * p
+        if not gradient:
+            return a.pos + (b.pos - a.pos) * p
+        start_slope = self._gradients[idx - 1] * span
+        end_slope = self._gradients[idx] * span
+        # Cubic Hermite in Horner form, as in Signal Lab.
+        cubic = 2 * (a.pos - b.pos) + start_slope + end_slope
+        quadratic = 3 * (b.pos - a.pos) - 2 * start_slope - end_slope
+        return a.pos + p * (start_slope + p * (quadratic + p * cubic))
 
     def _match_locked(self, now: float) -> None:
         samples = list(self._live)
@@ -386,12 +465,59 @@ class FunscriptTimeline:
             self._match_position += delta * (0.75 if abs(delta) < 1.0 else 1.0)
         self._match_score = max(0.0, min(1.0, 1.0 - rmse / 0.22))
 
-    def sample_position(self, seconds: float) -> float | None:
+    def sample_position(self, seconds: float, interpolation: str | None = None) -> float | None:
         """Return authored L0 at an arbitrary script time without changing clock state."""
         with self._lock:
             if not self._actions:
                 return None
-            return self._interp_locked(min(self._duration, max(0.0, float(seconds))))
+            return self._interp_locked(min(self._duration, max(0.0, float(seconds))),
+                                       gradient=(interpolation or self._interpolation) == "Gradient")
+
+    @property
+    def interpolation(self) -> str:
+        with self._lock:
+            return self._interpolation
+
+    def sample_playing_position(self, seconds: float, interpolation: str, lead: float) -> float | None:
+        """Sample ahead of the player clock to cover Vector's output queue delay."""
+        with self._lock:
+            if not self._actions or seconds >= self._duration or seconds + lead < self._times[0]:
+                return None
+            return self._interp_locked(seconds + lead, gradient=interpolation == "Gradient")
+
+    @staticmethod
+    def _keyframe_arc_directions(actions: list[FunscriptAction]) -> tuple[int, ...]:
+        # A fixed sequence makes the same passage repeatable after a seek.
+        rng = random.Random(0)
+        direction = 1
+        last_sign = 0
+        directions = []
+        for start, end in zip(actions, actions[1:]):
+            sign = (end.pos > start.pos) - (end.pos < start.pos)
+            if sign:
+                if last_sign and sign != last_sign and rng.random() < KEYFRAME_ARC_REVERSAL_PROBABILITY:
+                    direction *= -1
+                last_sign = sign
+            directions.append(direction)
+        return tuple(directions)
+
+    def sample_keyframe_arc(self, seconds: float) -> tuple[float, float] | None:
+        with self._lock:
+            if not self._actions:
+                return None
+            if seconds <= self._times[0]:
+                return self._actions[0].pos, 0.5
+            if seconds >= self._duration:
+                return self._actions[-1].pos, 0.5
+            index = bisect_right(self._times, seconds) - 1
+            start, end = self._actions[index], self._actions[index + 1]
+            progress = (seconds - start.at) / (end.at - start.at)
+            return restim_arc(start.pos, end.pos, progress, self._arc_directions[index])
+
+    def action_times(self, start, end):
+        """Authored vertices for timed device playback, independent of L0 matching."""
+        with self._lock:
+            return tuple(self._times[bisect_right(self._times, start):bisect_right(self._times, end)])
 
     def position_seconds(self) -> float | None:
         # Playback position is extrapolated between authoritative player polls.
@@ -435,7 +561,7 @@ class FunscriptTimeline:
         points: list[tuple[float, float]] = []
         t = start
         while t <= end + 1e-9:
-            points.append((t, self._interp_locked(t)))
+            points.append((t, self._interp_locked(t, gradient=self._interpolation == "Gradient")))
             t += 0.10
         left = bisect_right(self._times, start)
         right = bisect_right(self._times, end)

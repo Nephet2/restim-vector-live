@@ -17,6 +17,7 @@ class RangeBar(tk.Canvas):
         self._minimum_var, self._maximum_var = minimum_var, maximum_var
         self._command = command
         self._minimum, self._maximum, self._value = 0., 1., 0.
+        self._composed = None
         self._active = "minimum"
         self._dragging = False
         self._notify_id = None
@@ -69,7 +70,16 @@ class RangeBar(tk.Canvas):
 
     def set(self, minimum, maximum, value):
         self._minimum, self._maximum = unit_range(minimum, maximum)
+        self.set_live_value(value)
+
+    @property
+    def bounds(self):
+        return self._minimum, self._maximum
+
+    def set_live_value(self, value, composed=None):
+        """Refresh the markers using the last valid bounds from the editor."""
         self._value = min(1., max(0., float(value)))
+        self._composed = None if composed is None else min(1., max(0., float(composed)))
         self._draw()
 
     def _x(self, value):
@@ -84,8 +94,6 @@ class RangeBar(tk.Canvas):
         x0, x1 = self._x(self._minimum), self._x(self._maximum)
         self.create_rectangle(5, 5, self._width - 5, h - 4, fill="#cbd0d5", outline="")
         self.create_rectangle(x0, 5, x1, h - 4, fill="#27ad61", outline="")
-        marker = self._x(self._value)
-        self.create_line(marker, 3, marker, h - 2, fill="#173b8f", width=2)
         if self._minimum_var is not None:
             # Split handles remain independently selectable even at equal bounds.
             self.create_rectangle(x0-4, 2, x0+4, h/2, fill="#354b60", outline="#fff")
@@ -94,6 +102,12 @@ class RangeBar(tk.Canvas):
                 x = x0 if self._active == "minimum" else x1
                 y0, y1 = (1, h/2+1) if self._active == "minimum" else (h/2-1, h)
                 self.create_rectangle(x-5, y0, x+5, y1, outline="#1769aa", width=2)
+        marker = self._x(self._value)
+        self.create_line(marker, 2, marker, h - 2, fill="#173b8f", width=2, tags="live_target")
+        if self._composed is not None:
+            composed = self._x(self._composed)
+            self.create_line(composed, h / 2, composed, h - 2, fill="#a34300", width=3,
+                             tags="live_composed")
         self.configure(cursor="hand2" if self._minimum_var is not None else "")
 
     def _press(self, event):

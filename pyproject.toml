@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vector1a"
-version = "1.6.0a87"
+version = "1.6.0a88"
 description = "Live MultiFunPlayer L0 to dual-ReStim motion bridge"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -22,5 +22,5 @@ vector1a = "vector1a.app:main"
 include = ["vector1a*"]
 
 [tool.setuptools.package-data]
-vector1a = ["event_definitions.yml"]
+vector1a = ["event_definitions.yml", "vacuglide_three_minute_example.json"]
 

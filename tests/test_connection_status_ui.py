@@ -17,6 +17,8 @@ class ListenerStatusTests(unittest.TestCase):
         app = object.__new__(VectorApp)
         app.listener = listener
         app.mfp_status = Mock()
+        app.playback_status = Mock()
+        app._direct_status = "Disconnected"
         app.mfp_status.get.return_value = "MFP stream recovered: OSError: WinError 10038"
         app._refresh_mfp_status()
         app.mfp_status.set.assert_called_once_with("Receiving (WEBSOCKET)")

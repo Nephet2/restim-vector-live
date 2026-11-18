@@ -15,6 +15,20 @@ class MotionMode(str, Enum):
     RESTIM_ORIGINAL = "ReStim Original 0-360"
 
 
+def numbered_mode_box(parent, variable, **kwargs):
+    """Display speech-friendly names while retaining saved/API enum values."""
+    import tkinter as tk
+    from tkinter import ttk
+    labels={mode.value:f'Mode {i} - {mode.value}' for i,mode in enumerate(MotionMode,1)}
+    selected=tk.StringVar(parent,value=labels.get(variable.get(),variable.get()))
+    box=ttk.Combobox(parent,textvariable=selected,values=list(labels.values()),state='readonly',**kwargs)
+    reverse={label:value for value,label in labels.items()}
+    box.bind('<<ComboboxSelected>>',lambda event:variable.set(reverse[selected.get()]))
+    token=variable.trace_add('write',lambda *args:selected.set(labels.get(variable.get(),variable.get())))
+    box.bind('<Destroy>',lambda event:variable.trace_remove('write',token) if event.widget is box else None)
+    return box
+
+
 @dataclass(frozen=True)
 class MotionParameters:
     min_distance_from_center: float = 0.1
@@ -54,6 +68,13 @@ class SegmentState:
         return min(abs(self.end_position - self.start_position) / self.duration / 2.0, 1.0) * 100.0
 
 
+def restim_arc(start: float, end: float, progress: float, direction: int) -> tuple[float, float]:
+    center = (start + end) / 2.0
+    radius = (start - end) / 2.0
+    return (center + radius * math.cos(progress * math.pi),
+            0.5 + radius * direction * math.sin(progress * math.pi))
+
+
 class MotionCalculator:
     def __init__(self, seed: int | None = None) -> None:
         self._random = random.Random(seed)
@@ -73,7 +94,10 @@ class MotionCalculator:
             self._segment_directions[segment.sequence] = self._direction
             # Bound memory without affecting current/recent segments.
             if len(self._segment_directions) > 512:
-                oldest = sorted(self._segment_directions)[:-256]
+                # IDs include both completed strokes and provisional strokes
+                # (offset by a billion). Numeric order is not cache age: sorting
+                # can evict a completed stroke immediately after inserting it.
+                oldest = list(self._segment_directions)[:-256]
                 for key in oldest:
                     del self._segment_directions[key]
         return self._segment_directions[segment.sequence]
@@ -97,11 +121,8 @@ class MotionCalculator:
             progress = segment.progress(at_time)
             start = spatial_response(segment.start_position, spatial_curve, spatial_blend)
             end = spatial_response(segment.end_position, spatial_curve, spatial_blend)
-            center = (start + end) / 2.0
-            radius = (start - end) / 2.0
             direction = self._direction_for(segment, params.direction_change_probability)
-            alpha = center + radius * math.cos(progress * math.pi)
-            beta = 0.5 + radius * direction * math.sin(progress * math.pi)
+            alpha, beta = restim_arc(start, end, progress, direction)
         elif mode == MotionMode.CIRCULAR:
             radius = self._radius(speed, params)
             theta = (1.0 - position) * math.pi

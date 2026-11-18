@@ -1,12 +1,13 @@
 """Output composition, independent of UI widgets and network destinations."""
 from __future__ import annotations
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import Mapping
 import math
 import time
 from .engine import OutputSample
+from .motion import MotionMode
 from .output_config import OutputConfig
 from .output_ranges import match_volume_response
 from .custom_spatial import evaluate_curves
@@ -31,6 +32,13 @@ class CompositionResult:
 
 class OutputComposer:
     def __init__(self, engine, axis_router, event_engine, top_gain, bottom_gain, bottom_focus):
+        self.passage = None
+        self._pulse_damping_state = None
+        self.applied_motion_mode = None
+        self._keyframe_arc_applied = False
+        self._mode_from = None
+        self._mode_changed_at = 0.0
+        self._last_spatial = None
         self.engine = engine
         self.axis_router = axis_router
         self.event_engine = event_engine
@@ -59,6 +67,31 @@ class OutputComposer:
     def reset_motion_direction(self) -> None:
         self._motion_send_last_l0 = 0.5
         self._motion_send_direction = 1
+
+    def reset_pulse_damping(self) -> None:
+        self._pulse_damping_state = None
+
+    def _damp_primary_pulse(self, values, due_at, config, howl_pulse):
+        seconds = (config.frequency_damping, config.pulse_frequency_damping,
+                   config.pulse_rise_damping, config.pulse_width_damping)
+        previous = self._pulse_damping_state
+        if previous is not None and any(seconds):
+            last_at, last_values = previous
+            elapsed = due_at - last_at
+            if elapsed >= 0:
+                limits = list(self.engine.pulse_command_ranges())
+                if howl_pulse:
+                    limits[1] = limits[3] = (0.0, 1.0)
+                damped = []
+                for target, prior, tau, (low, high) in zip(values, last_values, seconds, limits):
+                    if tau > 0:
+                        # Use the scheduled command interval, independent of the configured sample rate.
+                        target = prior + (target - prior) * -math.expm1(-elapsed / tau)
+                        target = max(low, min(high, target))
+                    damped.append(target)
+                values = tuple(damped)
+        self._pulse_damping_state = (due_at, values)
+        return values
 
     @property
     def effective_group_delay(self) -> float:
@@ -197,7 +230,30 @@ class OutputComposer:
         raise ValueError("region must be top or bottom")
 
 
+    def _blend_motion(self, sample, keyframe_arcs=False):
+        incoming = sample.mode.value
+        use_arc = (keyframe_arcs and sample.mode is MotionMode.RESTIM_ORIGINAL
+                   and sample.keyframe_arc is not None)
+        if use_arc:
+            sample = replace(sample, alpha=sample.keyframe_arc[0], beta=sample.keyframe_arc[1])
+        if self.applied_motion_mode is not None and (
+                incoming != self.applied_motion_mode or use_arc != self._keyframe_arc_applied):
+            self._mode_from = self._last_spatial
+            self._mode_changed_at = sample.due_at
+        self.applied_motion_mode = incoming
+        self._keyframe_arc_applied = use_arc
+        if self._mode_from is not None:
+            amount = min(1.0, max(0.0, (sample.due_at-self._mode_changed_at)/2.0))
+            amount = amount*amount*(3-2*amount)
+            old_a, old_b = self._mode_from
+            sample = replace(sample, alpha=old_a+(sample.alpha-old_a)*amount,
+                             beta=old_b+(sample.beta-old_b)*amount)
+            if amount >= 1: self._mode_from = None
+        self._last_spatial = (sample.alpha, sample.beta)
+        return sample
+
     def compose(self, sample: OutputSample, config: OutputConfig) -> CompositionResult:
+        sample = self._blend_motion(sample, config.magik_keyframe_arcs)
         variation_depth = (sample.variation_depth
                            if config.speed_linked_variation else 1.0)
         motion_delta = sample.output_l0 - self._motion_send_last_l0
@@ -316,10 +372,10 @@ class OutputComposer:
         bottom_volume = apply_gain(sample.volume_prostate, bottom_gain)
         primary_alpha = sample.alpha
         primary_beta = sample.beta
-        primary_frequency = sample.frequency
-        primary_pulse_frequency = sample.pulse_frequency
-        primary_pulse_width = sample.pulse_width
-        if howl_mode and config.howl_pulse:
+        primary_frequency, primary_pulse_frequency, primary_pulse_rise, primary_pulse_width = (
+            sample.shifted_primary_pulse or sample.primary_pulse)
+        howl_pulse = howl_mode and config.howl_pulse
+        if howl_pulse:
             # These normalized axes require the ranges displayed in the UI.
             low = min(100.0, max(1.0, config.howl_freq_min))
             high = min(100.0, max(low, config.howl_freq_max))
@@ -327,6 +383,10 @@ class OutputComposer:
             primary_pulse_frequency = (hz-1)/99
             cycles = round(5 + min(1.0, max(0.0, config.howl_thump))*15*(1-(min(50, max(1, hz))-1)/49)**1.5)
             primary_pulse_width = (cycles-3)/17
+        primary_frequency, primary_pulse_frequency, primary_pulse_rise, primary_pulse_width = (
+            self._damp_primary_pulse(
+                (primary_frequency, primary_pulse_frequency, primary_pulse_rise, primary_pulse_width),
+                sample.due_at, config, howl_pulse))
         if config.director_events_enabled:
             event_base = authored_overrides or {}
             event_values = self.event_engine.apply_triggers(sample.due_at, {
@@ -356,16 +416,25 @@ class OutputComposer:
                 for event_axis, authored_axis in AXIS_AUTHORED.items():
                     if authored_axis in authored_overrides:
                         authored_overrides[authored_axis] = event_values[event_axis]
+        if self.passage is not None:
+            primary_factor, secondary_factor = self.passage.factors_now()
+            primary_volume = min(1.0, primary_volume * primary_factor)
+            bottom_volume *= secondary_factor
+            if authored_overrides and "V0" in authored_overrides:
+                authored_overrides = dict(authored_overrides)
+                authored_overrides["V0"] = min(1.0, authored_overrides["V0"] * primary_factor)
         outgoing_volumes = (
             authored_overrides.get("V0", primary_volume) if authored_overrides else primary_volume,
             bottom_volume)
         primary_args = (
             primary_alpha, primary_beta, tuple(electrodes), primary_volume, primary_frequency,
-            primary_pulse_frequency, sample.pulse_rise_time, primary_pulse_width)
+            primary_pulse_frequency, primary_pulse_rise, primary_pulse_width)
         primary_overrides = dict(authored_overrides) if authored_overrides else None
         prostate_args = (
             focused_alpha_prostate, sample.beta_prostate, bottom_volume,
-            sample.frequency, sample.pulse_frequency, sample.pulse_width,
+            sample.frequency,
+            sample.pulse_frequency if sample.secondary_pulse_frequency is None else sample.secondary_pulse_frequency,
+            sample.pulse_width if sample.secondary_pulse_width is None else sample.secondary_pulse_width,
             sample.pulse_rise_time)
         return CompositionResult(
             primary_args, MappingProxyType(primary_overrides) if primary_overrides else None,

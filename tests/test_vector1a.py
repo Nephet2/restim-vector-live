@@ -15,6 +15,19 @@ class TCodeTests(unittest.TestCase):
 
 
 class MotionTests(unittest.TestCase):
+    def test_original_motion_survives_mixed_stroke_cache_rollover(self):
+        calc = MotionCalculator(seed=1)
+        params = MotionParameters(direction_change_probability=0.5)
+        for sequence in range(1200):
+            # Live calculation uses high provisional IDs; look-ahead rewriting
+            # subsequently revisits the completed stroke with its smaller ID.
+            for key in (1_000_000_000 + sequence, sequence):
+                stroke = SegmentState(key, 0.0, 1.0, 0.0, 1.0)
+                first = calc.calculate(MotionMode.RESTIM_ORIGINAL, stroke, 0.5, params)
+                repeated = calc.calculate(MotionMode.RESTIM_ORIGINAL, stroke, 0.5, params)
+                self.assertEqual(first, repeated)
+                self.assertLessEqual(len(calc._segment_directions), 512)
+
     def setUp(self):
         self.segment = SegmentState(1, 10.0, 11.0, 0.0, 1.0)
         self.params = MotionParameters(0.1, 50.0, 0.0)

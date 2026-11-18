@@ -2,6 +2,11 @@
 import tkinter as tk
 from tkinter import ttk
 
+from .vacuglide_editor import show_editor
+from .handy_panel import show_handy
+from .output_panel import show_outputs
+from .session_header import SessionHeader
+
 
 def jump_to_section(app, title):
     section = app.sections[title]
@@ -22,15 +27,18 @@ def build_navigation(app):
     controls = ttk.Frame(header)
     controls.grid(row=0, column=0, sticky='ew')
     ttk.Label(controls, text='Vector Live', font=('TkDefaultFont', 11, 'bold')).pack(side='left', padx=(0,16))
-    for label, action in (('START / RESUME',app.resume),('Neutral',app.neutral),('STOP',app.stop),
+    for label, action in (('Resume ReStim',app.resume),('Neutral ReStim',app.neutral),('Stop all',app.stop),
                           ('Pressure',lambda:app.pressure_control.show(app.root,app.stop))):
         ttk.Button(controls,text=label,command=action).pack(side='left',padx=(0,6))
-    ttk.Label(controls,textvariable=app.diag_vars['state'],width=12,anchor='e').pack(side='right')
+    ttk.Label(controls,textvariable=app.director_status,width=24,anchor='e').pack(side='right')
 
     navigation = ttk.Frame(header)
     navigation.grid(row=1,column=0,sticky='ew',pady=(6,0))
     groups = (
-        ('Session',(('Session startup',app.show_session_startup),('Director',app.show_director_window))),
+        ('Session',(('Session startup',app.show_session_startup),('Director',app.show_director_window),
+                    ('Motion + intensity',lambda:show_outputs(app)),
+                    ('VacuGlide Interface',lambda:show_editor(app)),
+                    ('Handy Interface',lambda:show_handy(app)))),
         ('Presets & tools',(('Presets A/B',app.show_preset_window),('Semantic profiles',app.show_director_semantic_window),
                            ('Response curves',app.show_parameter_curves),('Spatial curves',app.show_custom_curves),
                            ('Rolling Variety',app.show_variety_window),('Script modifiers',app.show_modifier_window))),
@@ -56,9 +64,10 @@ def build_navigation(app):
                             command=lambda title=section:jump_to_section(app,title))
         button.pack(side='left',padx=(0,4))
         app.section_shortcuts[section] = button
-    status = ttk.Frame(header)
-    status.grid(row=2,column=0,sticky='ew',pady=(5,0))
-    status.columnconfigure(0,weight=1);status.columnconfigure(1,weight=1)
-    ttk.Label(status,textvariable=app.session_ready_status,width=1,anchor='w').grid(row=0,column=0,sticky='ew')
-    ttk.Label(status,textvariable=app.director_status,width=1,anchor='e').grid(row=0,column=1,sticky='ew')
+    app.session_header = SessionHeader(header, app, (
+        ("ReStim Primary", lambda: jump_to_section(app, "ReStim output")),
+        ("ReStim Prostate", lambda: jump_to_section(app, "ReStim output")),
+        ("Handy", lambda: show_handy(app)),
+        ("VacuGlide", lambda: show_editor(app)),
+    ))
     app.navigation_header = header

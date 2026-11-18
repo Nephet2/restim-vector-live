@@ -8,7 +8,7 @@ import threading
 from collections import deque
 from tkinter import filedialog, messagebox, ttk
 
-from .engine import OutputSample, VectorEngine
+from .engine import PRIMARY_PULSE_AXES, OutputSample, VectorEngine
 from .range_bar import RangeBar
 from .parameter_curves import (default_curves, validate_parameter_curves,
                                validate_parameter_profile, validated_parameter_profiles)
@@ -38,8 +38,17 @@ from .controller import (A, B, X, Y, START, LEFT_SHOULDER, RIGHT_SHOULDER, DPAD_
                          DPAD_LEFT, DPAD_RIGHT, XInputController, controller_snapshot)
 from .variety import fit_range_for_travel, rolling_offset, rolling_value
 from .director import DirectorBridge, DirectorServer
+from .vacuglide import VacuGlideOutput
+from .handy import HandyOutput
+from .handy_control import HandyControl
+from .vacuglide_control import VacuGlideControl
+from .vacuglide_panel import show_vacuglide_panel
 from .generated_motion import GeneratedMotionSource, MotionPlan, PATTERNS
 from .timeline import FunscriptTimeline
+from .direct_player import DEOVR, DirectPlayerInput, HERESPHERE, MFP
+from .passage import PassageController, PassagePlan
+from .passage_ui import add_passage_controls
+from .passage_sequence import SequencePlan
 from .fourphase import (ELECTRODE_ORDERS, SPATIAL_MODELS, adaptive_crossover_width,
                         apply_group_delay, depth_spread, directed_signed,
                         directional_crossover_profile, map_electrode_order,
@@ -133,17 +142,17 @@ class VectorApp:
     TOP_FOCUS_PROFILE_NAMES = TOP_FOCUS_LABELS
     BOTTOM_FOCUS_PROFILE_NAMES = BOTTOM_FOCUS_LABELS
     PRIMARY_SPATIAL_NAMES = {
-        "top_moving_focus": "Top — Moving Focus",
-        "top_depth_spread": "Top — Depth Spread",
-        "top_howl_positional": "Top — Howl Positional",
-        "top_howl_dynamic": "Top — Howl Dynamic",
+        "top_moving_focus": "Top â€” Moving Focus",
+        "top_depth_spread": "Top â€” Depth Spread",
+        "top_howl_positional": "Top â€” Howl Positional",
+        "top_howl_dynamic": "Top â€” Howl Dynamic",
         "top_custom": "Top - Custom curves",
     }
     SECONDARY_SPATIAL_NAMES = {
         "bottom_focus": "Bottom Focus",
     }
     TEXTURE_PROFILE_FIELDS = (
-        "frequency_ramp_level",
+        "frequency_min", "frequency_max", "frequency_ramp_level",
         "pulse_frequency_min", "pulse_frequency_max",
         "pulse_rise_min", "pulse_rise_max",
         "pulse_width_min", "pulse_width_max",
@@ -154,6 +163,7 @@ class VectorApp:
         "four_phase_reverse_curve", "four_phase_reverse_sharpness",
         "four_phase_reversal_emphasis", "four_phase_reversal_window",
         "four_phase_reversal_strength", "four_phase_stroke_phase_texture",
+        "motion_rising_volume_multiplier", "motion_falling_volume_multiplier",
         "four_phase_acceleration_width_scale", "four_phase_deceleration_width_scale",
         "four_phase_group_delay", "four_phase_group_delay_ms",
         "four_phase_group_delay_transition",
@@ -189,12 +199,17 @@ class VectorApp:
 
     SETTINGS_FIELDS = (
         "automatic_ready",
+        "frequency_damping", "pulse_frequency_damping", "pulse_rise_damping", "pulse_width_damping",
+        *(f"{axis}_{suffix}" for axis in PRIMARY_PULSE_AXES
+          for suffix in ("offset_ms", "phase_degrees")),
         "volume_response_min", "volume_response_max", "frequency_min", "frequency_max",
         "send_frequency", "send_pulse_frequency", "send_pulse_rise", "send_pulse_width",
         "howl_width", "howl_pan", "howl_boost", "howl_sigma", "howl_pulse", "howl_thump", "howl_freq_min", "howl_freq_max", "howl_balance_a", "howl_balance_b", "howl_scaling", "howl_position_strength", "match_spatial_intensity",
         "mfp_host", "mfp_port", "restim_host", "restim_port", "prostate_host", "prostate_port",
         "timeline_media_host", "timeline_vlc_port", "timeline_vlc_password", "timeline_mpc_port",
-        "timeline_script_libraries", "timeline_auto_load_script", "timeline_clock_source",
+        "direct_mpc_host", "direct_mpc_port", "direct_here_host", "direct_here_port",
+        "direct_deovr_host", "direct_deovr_port",
+        "timeline_script_libraries", "timeline_auto_load_script", "timeline_clock_source", "timeline_interpolation",
         "four_phase_host", "four_phase_port",
         "auto_start_mfp", "auto_start_restim", "auto_start_prostate",
         "director_enabled", "director_host", "director_port", "director_events_enabled",
@@ -237,7 +252,9 @@ class VectorApp:
         "jitter_enabled", "jitter_amplitude", "jitter_cycle_seconds",
         "speed_linked_variation", "variation_full_speed_percent", "variation_fade_seconds",
         "prostate_phase_step", "controller_enabled", "controller_fine_step", "minimum_radius",
-        "speed_threshold", "direction_probability", "mode", "direct_controller_enabled",
+        "speed_threshold", "direction_probability", "mode", "direct_controller_enabled", "preserve_stroke_range",
+        "timing_variation_enabled", "timing_variation_style", "timing_variation_amount",
+        "timing_variation_group_multiplier",
         "variety_enabled", "variety_frequency_cycle", "variety_pulse_frequency_cycle",
         "variety_pulse_rise_cycle", "variety_pulse_width_cycle", "variety_phase_cycle",
         "variety_frequency", "variety_pulse_frequency",
@@ -249,7 +266,7 @@ class VectorApp:
 
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        root.title(f"Vector 1A {__version__} - MFP to ReStim")
+        root.title(f"Vector 1A {__version__} - Commissioning")
         root.geometry("1360x900")
         root.minsize(980, 720)
 
@@ -290,6 +307,13 @@ class VectorApp:
         self.volume_response_max = tk.DoubleVar(value=1.0)
         self.frequency_min = tk.DoubleVar(value=0.0)
         self.frequency_max = tk.DoubleVar(value=1.0)
+        self.frequency_damping = tk.DoubleVar(value=0.0)
+        self.pulse_frequency_damping = tk.DoubleVar(value=0.0)
+        self.pulse_rise_damping = tk.DoubleVar(value=0.0)
+        self.pulse_width_damping = tk.DoubleVar(value=0.0)
+        for axis in PRIMARY_PULSE_AXES:
+            setattr(self, f"{axis}_offset_ms", tk.DoubleVar(value=0.0))
+            setattr(self, f"{axis}_phase_degrees", tk.DoubleVar(value=0.0))
         self.dynamic_volume = tk.BooleanVar(value=True)
         self.volume_rest_level = tk.DoubleVar(value=0.40)
         self.volume_ratio = tk.DoubleVar(value=20.0)
@@ -431,7 +455,7 @@ class VectorApp:
         self.modifier_tempo_scale = tk.DoubleVar(value=2.0)
         self.modifier_tempo_duration_seconds = tk.DoubleVar(value=30.0)
         self.modifier_status = tk.StringVar(value="Authored L0 unchanged")
-        self.modifier_tempo_status = tk.StringVar(value="Tempo authored ×1.0")
+        self.modifier_tempo_status = tk.StringVar(value="Tempo authored Ã—1.0")
         self._modifier_window = None
         self.controller_enabled = tk.BooleanVar(value=True)
         self.controller_target = tk.IntVar(value=0)
@@ -454,6 +478,12 @@ class VectorApp:
         self._variety_baseline = {}
         self._controller_events: queue.SimpleQueue[tuple[str, object]] = queue.SimpleQueue()
         self.minimum_radius = tk.DoubleVar(value=0.10)
+        self.preserve_stroke_range = tk.BooleanVar(value=False)
+        self.magik_keyframe_arcs = tk.BooleanVar(value=False)
+        self.timing_variation_enabled=tk.BooleanVar(value=False)
+        self.timing_variation_style=tk.StringVar(value='Stroke groups')
+        self.timing_variation_amount=tk.DoubleVar(value=.65)
+        self.timing_variation_group_multiplier=tk.IntVar(value=1)
         self.speed_threshold = tk.DoubleVar(value=50.0)
         self.direction_probability = tk.DoubleVar(value=0.10)
         self.mode = tk.StringVar(value=MotionMode.TOP_LEFT_BOTTOM_RIGHT.value)
@@ -481,6 +511,10 @@ class VectorApp:
         self.axis_router = AuthoredAxisRouter()
         self.event_engine = EventEngine()
         self._director_event_history: deque[dict] = deque(maxlen=12)
+        self.vacuglide = VacuGlideOutput()
+        self.handy = HandyOutput()
+        self.handy_control = HandyControl(self.handy, self._handy_transport)
+        self._handy_l0_seen = -1e9
         self.director_bridge = DirectorBridge()
         self.director_server = DirectorServer(self.director_bridge)
         self.orchestrator = SessionOrchestrator(self._set_startup_status)
@@ -496,15 +530,31 @@ class VectorApp:
         self._pressure_fault_seen = False
         self.restim.pressure_control = self.pressure_control
         self.prostate_restim.pressure_control = self.pressure_control
+        self._input_lock = threading.RLock()
+        self._direct_input = None
+        self._input_ready = True
+        self._input_epoch = float("-inf")
+        self._direct_revision = None
+        self.playback_input = tk.StringVar(value=MFP)
+        self.direct_mpc_host = tk.StringVar(value="127.0.0.1")
+        self.direct_mpc_port = tk.StringVar(value="13579")
+        self.direct_here_host = tk.StringVar(value="127.0.0.1")
+        self.direct_here_port = tk.StringVar(value="23554")
+        self.direct_deovr_host = tk.StringVar(value="127.0.0.1")
+        self.direct_deovr_port = tk.StringVar(value="23554")
         self.engine = VectorEngine(self._send_sample)
+        self.engine.input_tick = self._tick_direct_input
         self.generated_motion = GeneratedMotionSource(self._receive_generated_l0)
         self.timeline = FunscriptTimeline()
+        self.vacuglide_control = VacuGlideControl(self.vacuglide, self._vacuglide_transport)
+        self.passage = PassageController(transport=self.timeline.passage_transport)
         self.tempo = TempoController(self.timeline)
         self.input_pipeline = InputPipeline(self.engine, self.timeline, self.generated_motion, self.tempo)
         self._timeline_window = None
         self.timeline_file_display = tk.StringVar(value="No funscript loaded")
         self.timeline_status_display = tk.StringVar(value="Timeline idle")
         self.timeline_clock_source = tk.StringVar(value=FunscriptTimeline.CLOCK_AUTO)
+        self.timeline_interpolation = tk.StringVar(value="Linear")
         self.timeline_manual_position = tk.DoubleVar(value=0.0)
         self.timeline_media_host = tk.StringVar(value="127.0.0.1")
         self.timeline_vlc_port = tk.IntVar(value=8080)
@@ -516,6 +566,7 @@ class VectorApp:
         self._four_phase_direction = 1
         self._outgoing_volume_lock = threading.Lock()
         self._outgoing_volumes = None
+        self._outgoing_pulse = None
         self._four_phase_live_lock = threading.Lock()
         self._four_phase_live_output = (
             (0.5, 0.5, 0.5, 0.5), "ABCD", "ABCD", 0.0, "stable")
@@ -550,6 +601,7 @@ class VectorApp:
         self.output_composer = OutputComposer(
             self.engine, self.axis_router, self.event_engine,
             self._top_spatial_gain, self._bottom_spatial_gain, self._bottom_focus_transition)
+        self.output_composer.passage = self.passage
         self.director_top_focus.trace_add("write", self._on_top_focus_changed)
         self.director_bottom_focus.trace_add("write", self._on_bottom_focus_changed)
         self._build()
@@ -650,7 +702,12 @@ class VectorApp:
                 variety_enabled=self.variety_enabled.get(),
                 volume=self.volume.get(),
                 custom_curves=freeze_curves(self._custom_curves),
-                variety_started=self._variety_started)
+                variety_started=self._variety_started,
+                magik_keyframe_arcs=self.magik_keyframe_arcs.get(),
+                frequency_damping=min(5.0, max(0.0, self.frequency_damping.get())),
+                pulse_frequency_damping=min(5.0, max(0.0, self.pulse_frequency_damping.get())),
+                pulse_rise_damping=min(5.0, max(0.0, self.pulse_rise_damping.get())),
+                pulse_width_damping=min(5.0, max(0.0, self.pulse_width_damping.get())))
         except tk.TclError:
             return
         self._output_config = snapshot
@@ -777,10 +834,10 @@ class VectorApp:
 
         motion = self._frame("Motion", 1, 0, 2)
         ttk.Label(motion, text="Mode").grid(row=0, column=0, sticky="w")
-        mode_box = ttk.Combobox(motion, textvariable=self.mode, state="readonly", width=38,
-                                values=[mode.value for mode in MotionMode])
+        from .motion import numbered_mode_box
+        mode_box = numbered_mode_box(motion, self.mode, width=48)
         mode_box.grid(row=0, column=1, columnspan=3, sticky="w", padx=6)
-        mode_box.bind("<<ComboboxSelected>>", lambda _event: self.apply_config())
+        mode_box.bind("<<ComboboxSelected>>", lambda _event: self.apply_config(), add='+')
         fields = (
             ("Points per second", self.rate, 1, 200, 1),
             ("Look-ahead / delay (s)", self.lookahead, 0.05, 10, 0.05),
@@ -797,7 +854,7 @@ class VectorApp:
         ttk.Button(motion, text="Apply", command=self.apply_config).grid(row=3, column=5, sticky="e")
         ttk.Checkbutton(motion, text="Add smooth L0 position variation", variable=self.jitter_enabled,
                         command=self.apply_config).grid(row=3, column=0, sticky="w", pady=(5, 2))
-        ttk.Label(motion, text="Maximum shift (±L0)").grid(row=3, column=1, sticky="e")
+        ttk.Label(motion, text="Maximum shift (Â±L0)").grid(row=3, column=1, sticky="e")
         ttk.Spinbox(motion, from_=0, to=.20, increment=.005,
                     textvariable=self.jitter_amplitude, width=8,
                     command=self.apply_config).grid(row=3, column=2, sticky="w")
@@ -831,23 +888,70 @@ class VectorApp:
         ttk.Label(motion, text="Window either side (s)").grid(row=6, column=1, sticky="e")
         ttk.Spinbox(motion, from_=.05, to=1.5, increment=.05,
                     textvariable=self.four_phase_reversal_window, width=8).grid(row=6, column=2, sticky="w")
-        ttk.Label(motion, text="Current-volume boost (+×)").grid(row=6, column=3, sticky="e")
+        ttk.Label(motion, text="Current-volume boost (+Ã—)").grid(row=6, column=3, sticky="e")
         ttk.Spinbox(motion, from_=0, to=1, increment=.05,
                     textvariable=self.four_phase_reversal_strength, width=8).grid(row=6, column=4, sticky="w")
         ttk.Label(motion, textvariable=self.four_phase_reversal_live,
                   foreground="#555").grid(row=6, column=5, sticky="w", padx=8)
         ttk.Checkbutton(motion, text="Stroke-phase texture",
                         variable=self.four_phase_stroke_phase_texture).grid(row=7, column=0, sticky="w")
-        ttk.Label(motion, text="L0 rising volume ×").grid(row=7, column=1, sticky="e")
+        ttk.Label(motion, text="L0 rising volume Ã—").grid(row=7, column=1, sticky="e")
         ttk.Spinbox(motion, from_=.8, to=1, increment=.01,
                     textvariable=self.motion_rising_volume_multiplier, width=8).grid(row=7, column=2, sticky="w")
-        ttk.Label(motion, text="L0 falling volume ×").grid(row=7, column=3, sticky="e")
+        ttk.Label(motion, text="L0 falling volume Ã—").grid(row=7, column=3, sticky="e")
         ttk.Spinbox(motion, from_=.8, to=1, increment=.01,
                     textvariable=self.motion_falling_volume_multiplier, width=8).grid(row=7, column=4, sticky="w")
         ttk.Label(motion, text="Shared by 3-phase and 4-phase",
                    foreground="#555").grid(row=7, column=5, sticky="w", padx=8)
         ttk.Button(motion, text="Explain these controls", command=self.show_motion_guide).grid(
             row=8, column=5, sticky="e", pady=(5, 0))
+        ttk.Checkbutton(motion,text="Preserve stroke range (experimental; Modes 1-3)",
+                        variable=self.preserve_stroke_range,command=self.apply_config).grid(
+                            row=8,column=0,columnspan=5,sticky='w',pady=(5,0))
+        self.range_preservation_live=tk.StringVar(value='Stroke range: OFF')
+        ttk.Label(motion,textvariable=self.range_preservation_live,foreground='#555').grid(
+            row=9,column=0,columnspan=6,sticky='w')
+        def refresh_range_status():
+            if not self.root.winfo_exists():return
+            state=self.engine.range_preservation_snapshot()
+            status='ON' if state['enabled'] else 'OFF'
+            self.range_preservation_live.set(f"Stroke range: {status} | spatial scale {state['scale']:.0%} | {state['source']} | volume command unchanged")
+            self.root.after(250,refresh_range_status)
+        self.root.after(250,refresh_range_status)
+        ttk.Checkbutton(motion,text='Primary timing variation (experimental)',
+                        variable=self.timing_variation_enabled,command=self.apply_config).grid(
+                            row=10,column=0,columnspan=2,sticky='w',pady=(6,0))
+        from .timing_variation import STYLES
+        timing_box=ttk.Combobox(motion,textvariable=self.timing_variation_style,
+                               values=STYLES,state='readonly',width=20)
+        timing_box.grid(row=10,column=2,columnspan=2,sticky='w')
+        timing_box.bind('<<ComboboxSelected>>',lambda event:self.apply_config())
+        ttk.Label(motion,text='Amount (0-1)').grid(row=10,column=4,sticky='w')
+        ttk.Spinbox(motion,from_=0,to=1,increment=.05,width=7,
+                    textvariable=self.timing_variation_amount,command=self.apply_config).grid(row=10,column=5,sticky='w')
+        ttk.Label(motion,text='Group multiplier (1-32)').grid(row=11,column=0,sticky='w')
+        group_spin=ttk.Spinbox(motion,from_=1,to=32,increment=1,width=7,
+                    textvariable=self.timing_variation_group_multiplier,command=self.apply_config)
+        group_spin.grid(row=11,column=1,sticky='w',padx=6)
+        group_spin.bind('<Return>',lambda event:self.apply_config())
+        group_spin.bind('<FocusOut>',lambda event:self.apply_config())
+        ttk.Label(motion,text='Repeats each pattern entry; Stroke groups only',foreground='#555').grid(
+            row=11,column=2,columnspan=4,sticky='w')
+        timing_live=tk.StringVar(value='Timing: OFF')
+        ttk.Label(motion,textvariable=timing_live,wraplength=1000,foreground='#555').grid(
+            row=12,column=0,columnspan=6,sticky='w')
+        def refresh_timing_status():
+            if not self.root.winfo_exists():return
+            s=self.engine.timing_variation_snapshot()
+            msg=f"Timing: {s['status']} | groups x{s['group_multiplier']} | blend {s['applied_strength']:.0%}"
+            if 'output_pulse_frequency' in s:
+                msg+=f" | pulse frequency {s['baseline_pulse_frequency']:.3f} -> {s['output_pulse_frequency']:.3f} | pulse width {s['baseline_pulse_width']:.3f} -> {s['output_pulse_width']:.3f} (normalized)"
+            timing_live.set(msg);self.root.after(250,refresh_timing_status)
+        self.root.after(250,refresh_timing_status)
+        ttk.Checkbutton(motion, text="Magik keyframe arcs (direct playback, ReStim Original)",
+                        variable=self.magik_keyframe_arcs,
+                        command=self._publish_output_config).grid(
+                            row=13, column=0, columnspan=6, sticky="w", pady=(5, 0))
 
         volume_frame = self._frame("Volume response", 2, 0, 2)
         build_volume_response(self, volume_frame)
@@ -936,6 +1040,11 @@ class VectorApp:
                         textvariable=variable, width=7,
                         command=self.apply_config).grid(row=0, column=col + 1)
 
+        self._pulse_command_readouts = []
+        for axis, (frame, row) in zip(PRIMARY_PULSE_AXES, (
+                (frequency_frame, 2), (pulse_frame, 1), (rise_frame, 1), (width_frame, 1))):
+            self._build_pulse_response_controls(frame, row, axis)
+
         prostate = self._frame("Prostate controls", 7, 0, 2)
         self.prostate_bars = {}
         self.prostate_values = {}
@@ -975,7 +1084,7 @@ class VectorApp:
 
         four_phase = self._frame("Four-phase primary motion", 8, 0, 2)
         self.four_phase_bars, self.four_phase_values = [], []
-        for row, label in enumerate(("A — top", "B", "C", "D — bottom")):
+        for row, label in enumerate(("A â€” top", "B", "C", "D â€” bottom")):
             ttk.Label(four_phase, text=label, width=18).grid(row=row, column=0, sticky="w")
             ttk.Label(four_phase, text="0").grid(row=row, column=1)
             bar = ttk.Progressbar(four_phase, orient="horizontal", mode="determinate",
@@ -993,7 +1102,7 @@ class VectorApp:
         ttk.Spinbox(four_phase, from_=0, to=1, increment=.05,
                     textvariable=self.four_phase_return_depth, width=7).grid(
                         row=4, column=1, sticky="w")
-        ttk.Label(four_phase, text="Signed: primary +1.00 | return −depth | unused 0.00") \
+        ttk.Label(four_phase, text="Signed: primary +1.00 | return âˆ’depth | unused 0.00") \
             .grid(row=4, column=2, columnspan=4, sticky="w", padx=8)
         ttk.Checkbutton(four_phase, text="Reverse L0 direction", variable=self.four_phase_invert).grid(row=5, column=0, sticky="w")
         ttk.Checkbutton(four_phase, text="Add slow volume variation", variable=self.four_phase_volume_modulation).grid(row=5, column=3, sticky="w")
@@ -1036,7 +1145,7 @@ class VectorApp:
         ttk.Checkbutton(four_phase, text="Use different return-stroke crossover",
                         variable=self.four_phase_directional_trajectory).grid(
                             row=9, column=0, sticky="w")
-        ttk.Label(four_phase, text="Return width ×").grid(row=9, column=1, sticky="e")
+        ttk.Label(four_phase, text="Return width Ã—").grid(row=9, column=1, sticky="e")
         ttk.Spinbox(four_phase, from_=.2, to=3, increment=.05,
                     textvariable=self.four_phase_reverse_width_scale,
                     width=7).grid(row=9, column=2, sticky="w")
@@ -1075,11 +1184,11 @@ class VectorApp:
             ttk.Spinbox(howl_controls, from_=low, to=high, increment=step,
                         textvariable=variable, width=9).grid(row=row+1, column=col)
         ttk.Label(howl_controls, text="Balance: 0 reduces high frequencies; 0.5 neutral; "
-                  "1 reduces low frequencies. Pulse range is within ReStim's 1–100 Hz mapping.",
+                  "1 reduces low frequencies. Pulse range is within ReStim's 1â€“100 Hz mapping.",
                   wraplength=680).grid(row=8, column=0, columnspan=5, sticky="w")
         ttk.Checkbutton(howl_controls, text="Howl pulse frequency and low-frequency thump",
                         variable=self.howl_pulse).grid(row=2, column=0, columnspan=4, sticky="w")
-        ttk.Label(howl_controls, text="Pulse option requires ReStim P0 range 1–100 Hz, P1 range 3–20 cycles. "
+        ttk.Label(howl_controls, text="Pulse option requires ReStim P0 range 1â€“100 Hz, P1 range 3â€“20 cycles. "
                   "Carrier and rise time remain Vector controls.", wraplength=680).grid(
                       row=3, column=0, columnspan=4, sticky="w")
         ttk.Label(four_phase, text="Spatial model").grid(row=10, column=0, sticky="w")
@@ -1108,11 +1217,11 @@ class VectorApp:
                   foreground="#9b4b00").grid(
                       row=11, column=2, columnspan=4, sticky="w", pady=(2, 4))
         ttk.Label(four_phase, text="Change width through each stroke").grid(row=12, column=0, sticky="w")
-        ttk.Label(four_phase, text="Accelerating width ×").grid(row=12, column=1, sticky="e")
+        ttk.Label(four_phase, text="Accelerating width Ã—").grid(row=12, column=1, sticky="e")
         ttk.Spinbox(four_phase, from_=.2, to=3, increment=.05,
                     textvariable=self.four_phase_acceleration_width_scale,
                     width=7).grid(row=12, column=2, sticky="w")
-        ttk.Label(four_phase, text="Deceleration width ×").grid(row=12, column=3, sticky="e")
+        ttk.Label(four_phase, text="Deceleration width Ã—").grid(row=12, column=3, sticky="e")
         ttk.Spinbox(four_phase, from_=.2, to=3, increment=.05,
                     textvariable=self.four_phase_deceleration_width_scale,
                     width=7).grid(row=12, column=4, sticky="w")
@@ -1153,7 +1262,7 @@ class VectorApp:
             ttk.Label(four_phase, textvariable=value, width=10,
                       font=("TkDefaultFont", 10, "bold")).grid(row=row, column=1, sticky="w")
             self.four_phase_signed_values.append(value)
-        ttk.Label(four_phase, text="Conceptual relative potentials (−1 to +1); not T-code") \
+        ttk.Label(four_phase, text="Conceptual relative potentials (âˆ’1 to +1); not T-code") \
             .grid(row=15, column=2, columnspan=4, sticky="w", padx=8)
         ttk.Separator(four_phase, orient="horizontal").grid(
             row=19, column=0, columnspan=6, sticky="ew", pady=7)
@@ -1203,7 +1312,7 @@ class VectorApp:
                   text="Direct Xbox: D-pad frequency/pulse frequency | LB + D-pad rise/width | RB cycle signalling sequence | X/Y phase | A Resume | B Neutral | Menu Stop") \
             .grid(row=3, column=0, columnspan=7, sticky="w", padx=6, pady=(2, 2))
         ttk.Label(controller,
-                  text="W/S Frequency ramp ±  •  A/D Pulse frequency range −/+  •  I/K Rise range +/−  •  J/L Width range −/+  •  Enter Resume  •  Space Neutral  •  Esc Stop") \
+                  text="W/S Frequency ramp Â±  â€¢  A/D Pulse frequency range âˆ’/+  â€¢  I/K Rise range +/âˆ’  â€¢  J/L Width range âˆ’/+  â€¢  Enter Resume  â€¢  Space Neutral  â€¢  Esc Stop") \
             .grid(row=1, column=0, columnspan=6, sticky="w", padx=6, pady=(6, 2))
 
         variety = self._frame("Rolling Variety", 10, 0, 2)
@@ -1292,7 +1401,9 @@ class VectorApp:
 
     def _on_mfp_command(self, command, received_at: float) -> None:
         """Capture all MFP axes; L0 still enters the proven engine separately."""
-        self.axis_router.receive(command, received_at)
+        with self._input_lock:
+            if self._direct_input is None:
+                self.axis_router.receive(command, received_at)
 
     def _set_startup_status(self, text: str) -> None:
         self._record_connection_event("Startup", text)
@@ -1328,14 +1439,15 @@ class VectorApp:
                 row=row, column=0, sticky="w", pady=5)
             ttk.Entry(body, textvariable=target, width=62).grid(
                 row=row, column=1, columnspan=2, sticky="ew", padx=8)
-            ttk.Button(body, text="Browse…",
+            ttk.Button(body, text="Browseâ€¦",
                        command=lambda v=target: self._browse_launch_target(v)).grid(
                            row=row, column=3, sticky="e")
         ttk.Checkbutton(body, text="Automatically start listener, connect Primary ReStim and resume output",
                         variable=self.automatic_ready, command=self._save_settings).grid(
                             row=4, column=0, columnspan=4, sticky="w", pady=6)
+        ttk.Label(body, textvariable=self.session_ready_status).grid(row=5, column=0, sticky="w", pady=(12, 6))
         ttk.Label(body, textvariable=self.startup_status, foreground="#555").grid(
-            row=5, column=0, columnspan=4, sticky="w", pady=(12, 6))
+            row=5, column=1, columnspan=3, sticky="w", pady=(12, 6))
         buttons = ttk.Frame(body)
         buttons.grid(row=6, column=0, columnspan=4, sticky="ew")
         ttk.Button(buttons, text="Start selected session", command=self._launch_session_apps).pack(side="left")
@@ -1376,7 +1488,7 @@ class VectorApp:
 
         self._startup_in_progress = True
         self.session_ready_status.set("SESSION: STARTING")
-        self._set_startup_status("Starting selected session components…")
+        self._set_startup_status("Starting selected session componentsâ€¦")
         self._save_settings()
 
         # MFP sends into Vector, so Vector can prepare the listener immediately.
@@ -1486,7 +1598,7 @@ class VectorApp:
         controls: dict[str, tuple[tk.BooleanVar, ttk.Label, ttk.Label]] = {}
 
         ttk.Separator(outer).pack(fill="x", pady=(12, 8))
-        ttk.Label(outer, text="Recent MFP packets (raw input → parsed axes)",
+        ttk.Label(outer, text="Recent MFP packets (raw input â†’ parsed axes)",
                   font=("TkDefaultFont", 9, "bold")).pack(anchor="w")
         packet_box = tk.Text(outer, height=12, wrap="none")
         packet_box.pack(fill="both", expand=True, pady=(4, 6))
@@ -1563,7 +1675,7 @@ class VectorApp:
                     lines.append(f'{packet["transport"]} {age:5.2f}s  parsed=[{parsed}]  raw={raw}')
                 packet_box.configure(state="normal")
                 packet_box.delete("1.0", "end")
-                packet_box.insert("1.0", "\n".join(lines) if lines else "Waiting for MFP packets…")
+                packet_box.insert("1.0", "\n".join(lines) if lines else "Waiting for MFP packetsâ€¦")
                 packet_box.configure(state="disabled")
             for axis in axes:
                 if axis not in controls:
@@ -1606,6 +1718,129 @@ class VectorApp:
         ttk.Separator(outer).pack(fill="x", pady=8)
         ttk.Button(outer, text="Close", command=window.destroy).pack(anchor="e")
         refresh_routes()
+
+    def _playback_endpoint(self, source):
+        if source == HERESPHERE:
+            return self.direct_here_host, self.direct_here_port
+        if source == DEOVR:
+            return self.direct_deovr_host, self.direct_deovr_port
+        return self.direct_mpc_host, self.direct_mpc_port
+
+    def _show_playback_endpoint(self, _event=None) -> None:
+        source = self.playback_input.get()
+        host, port = self._playback_endpoint(source)
+        state = "disabled" if source == MFP else "normal"
+        self._playback_host.configure(textvariable=host, state=state)
+        self._playback_port.configure(textvariable=port, state=state)
+
+    def _apply_playback_input(self) -> None:
+        source = self.playback_input.get()
+        direct = None
+        if source != MFP:
+            host_var, port_var = self._playback_endpoint(source)
+            try:
+                host, port = host_var.get().strip(), int(port_var.get())
+                if not host or not 1 <= port <= 65535:
+                    raise ValueError
+            except (ValueError, tk.TclError):
+                messagebox.showerror("Playback input", "Enter a player address and a valid port.", parent=self.root)
+                return
+            libraries = tuple(part.strip() for part in self.timeline_script_libraries.get().split(";")
+                              if part.strip())
+            direct = DirectPlayerInput(source, host, port, libraries)
+
+        with self._input_lock:
+            previous = self._direct_input
+            if previous is not None:
+                previous.close()
+            self._direct_input = direct
+            self._direct_revision = None
+            if previous is not None or direct is not None:
+                self._input_ready = False
+                self.generated_motion.authored()
+                self.passage.reset()
+                self.axis_router.clear_history()
+                self._reset_four_phase_group_delay()
+                self.output_composer.reset_motion_direction()
+                self.engine.rebase_input(.5, time.monotonic())
+                self._mute_output()
+        if direct is not None:
+            direct.start()
+            self._save_settings()
+        elif not self.listener.health()["running"]:
+            self.start_listener()
+
+    def _load_playback_script(self) -> None:
+        direct = self._direct_input
+        if direct is None:
+            self._timeline_browse()
+            return
+        frame = direct.frame
+        if frame is None:
+            messagebox.showinfo("Load funscript", "Open a video and connect its playback input first.",
+                                parent=self.root)
+            return
+        path = filedialog.askopenfilename(parent=self.root, title="Open the current video's funscript",
+                                          filetypes=(("Funscript", "*.funscript"), ("All files", "*.*")))
+        if not path or self._direct_input is not direct:
+            return
+        try:
+            direct.load_manual(path, frame.snapshot.media_path)
+        except (OSError, ValueError, OverflowError) as error:
+            messagebox.showerror("Could not load funscript", str(error), parent=self.root)
+
+    def _vacuglide_transport(self):
+        direct = self._direct_input
+        if direct is not None:
+            return direct.follow_transport(time.monotonic(), self.timeline.interpolation)
+        return self.timeline.mfp_transport()
+
+    def _handy_transport(self):
+        now = time.monotonic()
+        if self._direct_input is not None:
+            return self._direct_input.handy_transport(now, self.timeline.interpolation)
+        frame = self.timeline.mfp_transport()
+        if frame is None:
+            # Pattern matching cannot distinguish repeated script passages.
+            # Never use its estimated clock for physical timed playback.
+            return None
+        else:
+            frame = dict(frame)
+            frame["position"] += max(0, now - frame["received_at"]) * frame["rate"] if frame["playing"] else 0
+            frame["label"] = "MFP / MPC timeline"
+        if not self.timeline.loaded:
+            return None
+        frame["source"] = (frame["source"], self.timeline.metadata().get("path"))
+        frame["sample"] = lambda seconds: self.timeline.sample_position(seconds, self.timeline.interpolation)
+        frame["sample_gradient"] = lambda seconds: self.timeline.sample_position(seconds, "Gradient")
+        frame["action_times"] = self.timeline.action_times
+        return frame
+
+    def _tick_direct_input(self, now) -> None:
+        with self._input_lock:
+            direct = self._direct_input
+            if direct is None:
+                return
+            interpolation = self.timeline.interpolation
+            value, revision, _, arc = direct.sample_frame(
+                now, interpolation, self.engine.lookahead_seconds, include_keyframe_arc=True)
+            if value is None:
+                if self._input_ready:
+                    self._input_ready = False
+                    self._reset_four_phase_group_delay()
+                    self._mute_output()
+                return
+
+            if not self._input_ready or self._direct_revision != revision:
+                if self._input_ready:
+                    self._mute_output()
+                self.engine.rebase_input(value, now)
+                self._reset_four_phase_group_delay()
+                self.output_composer.reset_motion_direction()
+                self._input_epoch = now
+                self._direct_revision = revision
+                self._input_ready = True
+            self.engine.receive_l0(value, received_at=now, keyframe_arc=arc)
 
     def start_listener(self) -> None:
         try:
@@ -1977,7 +2212,7 @@ class VectorApp:
             self.modifier_status.set("Authored L0 unchanged")
             return
         self.modifier_status.set(
-            f"ON  range ×{self.modifier_stroke_range.get():.2f} | "
+            f"ON  range Ã—{self.modifier_stroke_range.get():.2f} | "
             f"bias {self.modifier_position_bias.get():+.2f} | "
             f"smooth {self.modifier_smoothing.get():.2f}")
 
@@ -1995,7 +2230,7 @@ class VectorApp:
             return
         window = tk.Toplevel(self.root)
         self._modifier_window = window
-        window.title("Deterministic funscript modifiers — Alpha70")
+        window.title("Deterministic funscript modifiers â€” Alpha70")
         window.geometry("820x500")
         window.transient(self.root)
         body = ttk.Frame(window, padding=14)
@@ -2035,11 +2270,11 @@ class VectorApp:
         ttk.Combobox(tempo, textvariable=self.modifier_tempo_duration_seconds, state="readonly", width=8,
                      values=(10, 15, 30, 60, 90, 120)).grid(row=0, column=3, sticky="w", padx=(6, 16))
         ttk.Button(tempo, text="Start tempo window", command=self.start_tempo_window).grid(row=0, column=4, padx=6)
-        ttk.Button(tempo, text="Restore ×1", command=self.restore_tempo).grid(row=0, column=5, padx=6)
+        ttk.Button(tempo, text="Restore Ã—1", command=self.restore_tempo).grid(row=0, column=5, padx=6)
         ttk.Label(tempo, textvariable=self.modifier_tempo_status, foreground="#555").grid(
             row=1, column=0, columnspan=6, sticky="w", pady=(8, 0))
         ttk.Label(tempo, text=(
-            "Tempo uses the loaded full funscript timeline, so 2× can read future authored positions. "
+            "Tempo uses the loaded full funscript timeline, so 2Ã— can read future authored positions. "
             "At the end of the window Vector rejoins the live authored position through the transition ramp."),
             wraplength=740, foreground="#555").grid(row=2, column=0, columnspan=6, sticky="w", pady=(5, 0))
 
@@ -2065,20 +2300,76 @@ class VectorApp:
             now = time.monotonic()
             self.tempo.start(scale, media_pos, now, duration,
                              self.modifier_transition_seconds.get())
-            self.modifier_tempo_status.set(f"Tempo ×{scale:.1f} active for {duration:.0f} s")
+            self.modifier_tempo_status.set(f"Tempo Ã—{scale:.1f} active for {duration:.0f} s")
         except (tk.TclError, ValueError) as exc:
             messagebox.showerror("Tempo modifier", str(exc))
 
     def restore_tempo(self) -> None:
         self.tempo.restore(time.monotonic())
-        self.modifier_tempo_status.set("Tempo authored ×1.0")
+        self.modifier_tempo_status.set("Tempo authored Ã—1.0")
 
     def _tempo_l0(self, raw_value: float, now: float) -> float:
         return self.tempo.transform(raw_value, now)
 
+    def _build_pulse_response_controls(self, frame, row, axis) -> None:
+        controls = ttk.Frame(frame)
+        controls.grid(row=row, column=1, columnspan=9, sticky="w", pady=(4, 0))
+        offset = getattr(self, f"{axis}_offset_ms")
+        phase = getattr(self, f"{axis}_phase_degrees")
+
+        def add_control(label, variable, low, high, step, apply):
+            def commit(value=None):
+                try:
+                    number = float(value) if value is not None else variable.get()
+                except (ValueError, tk.TclError):
+                    number = 0.0
+                number = max(low, min(high, number))
+                if value is not None:
+                    number = round(number / step) * step
+                variable.set(round(number, 2))
+                apply()
+
+            ttk.Label(controls, text=label).pack(side="left", padx=(0, 4))
+            ttk.Scale(controls, from_=low, to=high, length=100,
+                      variable=variable, command=commit).pack(side="left")
+            spin = ttk.Spinbox(controls, from_=low, to=high, increment=step,
+                               textvariable=variable, width=5, command=commit)
+            spin.pack(side="left", padx=(4, 12))
+            spin.bind("<Return>", lambda event: commit())
+            spin.bind("<FocusOut>", lambda event: commit())
+
+        def zero_timing():
+            offset.set(0)
+            phase.set(0)
+            self._apply_primary_pulse_timing()
+
+        add_control("Damping (s)", getattr(self, f"{axis}_damping"),
+                    0, 5, .05, self._publish_output_config)
+        add_control("Timing (ms)", offset, -500, 500, 10, self._apply_primary_pulse_timing)
+        add_control("Stroke phase (°)", phase, -180, 180, 5, self._apply_primary_pulse_timing)
+        ttk.Button(controls, text="Zero timing", command=zero_timing).pack(side="left")
+        readout = tk.StringVar(value="Composed command: --")
+        ttk.Label(frame, textvariable=readout, foreground="#555").grid(
+            row=row+1, column=1, columnspan=9, sticky="w")
+        self._pulse_command_readouts.append(readout)
+
+    def _apply_primary_pulse_timing(self) -> None:
+        try:
+            settings = tuple((getattr(self, f"{axis}_offset_ms").get(),
+                              getattr(self, f"{axis}_phase_degrees").get())
+                             for axis in PRIMARY_PULSE_AXES)
+        except tk.TclError:
+            return  # A spinbox may temporarily contain incomplete text.
+        self.engine.configure_primary_pulse_timing(settings)
+
     def apply_config(self) -> None:
         self._publish_output_config()
         try:
+            self._apply_primary_pulse_timing()
+            self.engine.set_range_preservation(self.preserve_stroke_range.get())
+            self.engine.configure_timing_variation(self.timing_variation_enabled.get(),
+                self.timing_variation_style.get(),self.timing_variation_amount.get(),
+                self.timing_variation_group_multiplier.get())
             selected = MotionMode(self.mode.get())
             params = MotionParameters(self.minimum_radius.get(), self.speed_threshold.get(),
                                       self.direction_probability.get())
@@ -2286,13 +2577,23 @@ class VectorApp:
         return {
             "api_version": "0.9",
             "commands": {
+                "vacuglide": {"endpoint": "/v1/vacuglide", "actions": ["start", "speed", "stop", "script_trial", "timed_pause", "trim", "trim_delta", "follow_script", "follow_mfp", "follow_blend", "follow_manual", "catalog", "load_script", "conducted_manual", "conducted_trim"]},
                 "preset": ["Baseline", "A", "B"],
                 "rolling_variety": ["on", "off"],
                 "neutral": True,
                 "stop": {"enabled": True, "effect": "zero output and stop engine until Resume"},
+                "motion_mode": {"enabled": True, "modes": [m.value for m in MotionMode], "endpoint": "/v1/motion-mode", "transition_seconds": 2},
+                "passage": {"enabled": True, "endpoint": "/v1/passage/plan",
+                            "factor_range": [0, 1], "targets": ["primary", "both"],
+                            "clocks": ["elapsed", "media"], "total_seconds": [5, 1200],
+                            "ceiling_sequences": True, "sequence_endpoint": "/v1/passage/sequence",
+                            "sequence_presets": ["build_release", "tease_return"],
+                            "sequence_baseline": self.four_phase_volume_ceiling.get(),
+                            "completion": "sequence returns to primary ceiling; legacy plan retains terminal factor", "preview": "/v1/passage/preview"},
                 "generated_motion": {
                     "enabled": True,
                     "patterns": list(PATTERNS),
+                    "variation": [0, 1],
                     "minimum": [0.0, 0.90],
                     "maximum": [0.10, 1.0],
                     "minimum_travel": 0.10,
@@ -2322,6 +2623,10 @@ class VectorApp:
                         "all_labels": list(self.TEXTURE_PROFILE_NAMES),
                         "available": [name for name in self.TEXTURE_PROFILE_NAMES
                                       if name in self._director_texture_profiles],
+                        "conducted_available": [name for name, profile in self._director_texture_profiles.items()
+                                                if all(key not in profile or profile[key] == getattr(self, key).get()
+                                                       for key in ("motion_rising_volume_multiplier",
+                                                                   "motion_falling_volume_multiplier"))],
                     },
                     "primary_spatial": list(self.PRIMARY_SPATIAL_NAMES.keys()),
                     "custom_spatial_profiles": [
@@ -2455,6 +2760,7 @@ class VectorApp:
             "ok": True,
             "vector_version": __version__,
             "pressure_control": self.pressure_control.snapshot(),
+            "vacuglide": self.vacuglide_control.director_state(),
             "running": control["engine_state"] == "Running" and control["output_enabled"],
             "engine_state": control["engine_state"],
             "input_state": "Receiving" if mfp_receiving else "Idle",
@@ -2464,6 +2770,10 @@ class VectorApp:
                 "routing_mode": routing,
                 "live_axes": live_axes,
             },
+            "motion_mode": {"requested": self.engine.mode.value, "applied": self.output_composer.applied_motion_mode,
+                            "stroke_range":self.engine.range_preservation_snapshot(),
+                            "timing_variation":self.engine.timing_variation_snapshot()},
+            "passage": self.passage.snapshot(),
             "motion_source": self.generated_motion.snapshot(),
             "restim": {
                 "primary_connected": self.restim.connected,
@@ -2579,6 +2889,24 @@ class VectorApp:
                 request = self.director_bridge.get_nowait()
             except queue.Empty:
                 return
+            if request.method == "POST" and request.expired.is_set():
+                continue
+            if request.path == "/v1/vacuglide":
+                if request.method == "GET":
+                    request.status, request.response = 200, {"ok": True, **self.vacuglide_control.director_state()}
+                    request.completed.set()
+                elif not request.expired.is_set():
+                    try:
+                        future = self.vacuglide_control.director_command(request.body.get("action"),
+                                                        request.body.get("speed_percent"),
+                                                        script_id=request.body.get("script_id"),
+                                                        expected_revision=request.body.get("expected_revision"))
+                    except ValueError as exc:
+                        request.status, request.response = 409, {"ok": False, "error": str(exc)}
+                        request.completed.set()
+                    else:
+                        future.add_done_callback(lambda job, req=request: self._complete_vacuglide(req, job))
+                continue
             try:
                 if request.method == "GET" and request.path == "/v1/state":
                     request.status, request.response = 200, self._director_state()
@@ -2610,6 +2938,42 @@ class VectorApp:
                         self.apply_config()
                         request.status = 200
                         request.response = {"ok": True, "enabled": enabled}
+                elif request.method == "POST" and request.path == "/v1/motion-mode":
+                    selected = MotionMode(request.body.get("mode"))
+                    self.engine.set_motion_mode(selected)
+                    self.mode.set(selected.value)
+                    self.apply_config()
+                    request.status, request.response = 200, {"ok": True, "requested_mode": selected.value,
+                        "note": "Queued samples finish first; then spatial position blends over two seconds. Volume settings retained."}
+                elif request.method == "POST" and request.path.startswith("/v1/passage/"):
+                    action = request.path.rsplit("/", 1)[-1]
+                    if action in ("sequence", "sequence-preview"):
+                        plan = SequencePlan.validated(request.body, self.four_phase_volume_ceiling.get())
+                        if action == "sequence-preview":
+                            state = {"preview": plan.preview(), "baseline": plan.baseline, "duration_seconds": plan.duration}
+                        else:
+                            control = self.engine.control_state()
+                            if control["engine_state"] != "Running" or not control["output_enabled"]:
+                                raise ValueError("Start Vector manually before applying a sequence")
+                            state = {"passage": self.passage.apply(plan)}
+                    elif action in ("plan", "preview"):
+                        plan = PassagePlan.validated(request.body)
+                        if action == "preview":
+                            state = {"preview": plan.preview(), "duration_seconds": plan.duration}
+                        else:
+                            control = self.engine.control_state()
+                            if control["engine_state"] != "Running" or not control["output_enabled"]:
+                                raise ValueError("Start Vector manually before applying a passage")
+                            state = {"passage": self.passage.apply(plan)}
+                    elif action == "hold":
+                        state = {"passage": self.passage.hold()}
+                    elif action == "resume":
+                        state = {"passage": self.passage.resume()}
+                    elif action == "restore":
+                        state = {"passage": self.passage.restore(request.body.get("transition_seconds", 5))}
+                    else:
+                        raise ValueError("Unknown passage action")
+                    request.status, request.response = 200, {"ok": True, **state}
                 elif request.method == "POST" and request.path == "/v1/generated-motion/plan":
                     plan = MotionPlan.validated(request.body)
                     state = self.generated_motion.apply(plan, self.engine.diagnostics().output_l0)
@@ -2770,11 +3134,23 @@ class VectorApp:
                 else:
                     request.status = 404
                     request.response = {"ok": False, "error": "not found"}
+            except ValueError as exc:
+                request.status = 400
+                request.response = {"ok": False, "error": str(exc)}
             except Exception as exc:
                 request.status = 500
                 request.response = {"ok": False, "error": str(exc)}
             finally:
                 request.completed.set()
+
+    @staticmethod
+    def _complete_vacuglide(request, future) -> None:
+        try:
+            request.status, request.response = future.result()
+        except Exception:
+            request.status, request.response = 500, {"ok": False, "error": "Device command failed"}
+        finally:
+            request.completed.set()
 
     def _start_director(self) -> None:
         if self.director_server.running:
@@ -2789,6 +3165,7 @@ class VectorApp:
         self.director_status.set(f"DIRECTOR: {host}:{port}")
 
     def _stop_director(self) -> None:
+        self.vacuglide.stop()
         self.director_server.stop()
         self.director_status.set("DIRECTOR: OFF")
 
@@ -2846,6 +3223,8 @@ class VectorApp:
         ttk.Button(body, text="Funscript timeline...", command=self.show_timeline_window).grid(row=7, column=1, sticky="w", padx=6)
         ttk.Button(body, text="Save", command=self._save_settings).grid(row=7, column=2, sticky="w", padx=6)
         ttk.Button(body, text="Close", command=window.destroy).grid(row=7, column=3, sticky="e")
+        ttk.Button(body, text="VacuGlide Interface...", command=lambda: show_vacuglide_panel(self)).grid(
+            row=8, column=0, columnspan=4, sticky="w", pady=(8, 0))
 
     def show_timeline_window(self) -> None:
         if self._timeline_window is not None and self._timeline_window.winfo_exists():
@@ -2858,8 +3237,8 @@ class VectorApp:
         body = ttk.Frame(window, padding=16)
         body.grid(sticky="nsew")
         ttk.Label(body, text=(
-            "Read-only authored-script visibility. Vector can follow VLC/MPC directly and automatically resolve "
-            "a matching .funscript, or fall back to MFP pattern sync/manual preview. Timeline data never drives output."),
+            "Follow VLC/MPC or use MFP pattern sync or manual preview. Interpolation applies to direct player "
+            "playback, timeline sampling and active tempo changes. Ordinary MFP playback uses incoming L0."),
             wraplength=700, justify="left").grid(row=0, column=0, columnspan=5, sticky="w", pady=(0, 12))
         ttk.Label(body, text="Funscript").grid(row=1, column=0, sticky="w")
         ttk.Label(body, textvariable=self.timeline_file_display, width=55).grid(row=1, column=1, columnspan=3, sticky="w", padx=6)
@@ -2888,13 +3267,22 @@ class VectorApp:
         ttk.Button(body, text="Seek", command=self._timeline_seek).grid(row=6, column=2, sticky="w")
         ttk.Button(body, text="Play preview", command=self._timeline_play).grid(row=6, column=3, sticky="w", padx=6)
         ttk.Button(body, text="Pause", command=self._timeline_pause).grid(row=6, column=4, sticky="w")
-        ttk.Separator(body, orient="horizontal").grid(row=7, column=0, columnspan=6, sticky="ew", pady=12)
-        ttk.Label(body, textvariable=self.timeline_status_display, wraplength=760, justify="left").grid(row=8, column=0, columnspan=6, sticky="w")
+        ttk.Label(body, text="Funscript interpolation").grid(row=7, column=0, sticky="w", pady=(10, 2))
+        interpolation = ttk.Combobox(body, textvariable=self.timeline_interpolation, state="readonly", width=12,
+                                     values=FunscriptTimeline.INTERPOLATIONS)
+        interpolation.grid(row=7, column=1, sticky="w", padx=6)
+        interpolation.bind("<<ComboboxSelected>>", self._timeline_interpolation_changed)
+        ttk.Separator(body, orient="horizontal").grid(row=8, column=0, columnspan=6, sticky="ew", pady=12)
+        ttk.Label(body, textvariable=self.timeline_status_display, wraplength=760, justify="left").grid(row=9, column=0, columnspan=6, sticky="w")
         ttk.Label(body, text=(
             "Auto media player tries VLC first, then MPC. For local media, Vector reads the authoritative player time and "
             "looks beside the media for <video name>.funscript, then in configured script libraries. MFP pattern sync remains a fallback."),
-            foreground="#555", wraplength=760, justify="left").grid(row=9, column=0, columnspan=6, sticky="w", pady=(8, 12))
-        ttk.Button(body, text="Close", command=window.destroy).grid(row=10, column=5, sticky="e")
+            foreground="#555", wraplength=760, justify="left").grid(row=10, column=0, columnspan=6, sticky="w", pady=(8, 12))
+        ttk.Button(body, text="Close", command=window.destroy).grid(row=11, column=5, sticky="e")
+        self._refresh_timeline_window()
+
+    def _timeline_interpolation_changed(self, _event=None) -> None:
+        self.timeline.set_interpolation(self.timeline_interpolation.get())
         self._refresh_timeline_window()
 
     def _timeline_browse(self) -> None:
@@ -2921,6 +3309,7 @@ class VectorApp:
                 auto_load_script=self.timeline_auto_load_script.get(),
             )
             self.timeline.set_clock_mode(self.timeline_clock_source.get())
+            self.timeline.set_interpolation(self.timeline_interpolation.get())
             self.timeline.request_media_poll()
             if self._timeline_window is not None and self._timeline_window.winfo_exists():
                 self._refresh_timeline_window()
@@ -2960,7 +3349,7 @@ class VectorApp:
         if snap.get("loaded"):
             self.timeline_file_display.set(str(snap.get("file") or "Loaded funscript"))
         if not snap.get("loaded"):
-            self.timeline_status_display.set("Timeline idle — load a .funscript to enable authored lookahead")
+            self.timeline_status_display.set("Timeline idle â€” load a .funscript to enable authored lookahead")
             return
         if not snap.get("synced"):
             conf = snap.get("sync_confidence")
@@ -3069,13 +3458,13 @@ class VectorApp:
 
     def _refresh_director_profile_status(self) -> None:
         for label, var in self._director_texture_status_vars.items():
-            var.set("Saved" if label in self._director_texture_profiles else "—")
+            var.set("Saved" if label in self._director_texture_profiles else "â€”")
         for label, var in self._director_variation_status_vars.items():
-            var.set("Saved" if label in self._director_variation_profiles else "—")
+            var.set("Saved" if label in self._director_variation_profiles else "â€”")
         for label, var in self._director_top_focus_status_vars.items():
-            var.set("Saved" if label in self._director_top_focus_profiles else "—")
+            var.set("Saved" if label in self._director_top_focus_profiles else "â€”")
         for label, var in self._director_bottom_focus_status_vars.items():
-            var.set("Saved" if label in self._director_bottom_focus_profiles else "—")
+            var.set("Saved" if label in self._director_bottom_focus_profiles else "â€”")
 
     def _capture_director_profile(self, kind: str, label: str) -> None:
         if kind == "texture":
@@ -3160,8 +3549,8 @@ class VectorApp:
             self.director_semantic_status.set(str(exc))
             messagebox.showerror("Authored tempo", str(exc), parent=self._director_semantic_window)
         else:
-            self.director_semantic_status.set("Authored tempo restored to 1×" if scale == 1.0
-                                            else f"Temporary authored tempo {scale:g}× for {duration:g} s")
+            self.director_semantic_status.set("Authored tempo restored to 1Ã—" if scale == 1.0
+                                            else f"Temporary authored tempo {scale:g}Ã— for {duration:g} s")
 
     def show_director_semantic_window(self) -> None:
         if self._director_semantic_window is not None and self._director_semantic_window.winfo_exists():
@@ -3175,10 +3564,13 @@ class VectorApp:
         ttk.Label(body, text=(
             "Texture and Variation remain perceptual profiles. Spatial Focus is now an engine transform: "
             "top focus weights four-phase E1-E4 only; bottom focus remaps the secondary Alpha excursion. "
-            "Top focus does not change three-phase L0/L1 or the alpha/beta position plot."),
+            "Top focus does not change three-phase L0/L1 or the alpha/beta position plot.\n\n"
+            "Texture captures frequency and pulse ranges, reversal boost, and stroke-phase settings. "
+            "Variation captures smooth L0 variation, effect scaling, and rolling variation."),
             wraplength=720, justify="left").grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 12))
 
         add_tempo_controls(self, body, row=1)
+        add_passage_controls(self, body)
         ttk.Label(body, text="Texture", font=("TkDefaultFont", 10, "bold")).grid(row=2, column=0, sticky="w")
         ttk.Label(body, text="Captured?").grid(row=2, column=1, sticky="w")
         ttk.Label(body, text="Capture current").grid(row=2, column=2, sticky="w")
@@ -3186,7 +3578,7 @@ class VectorApp:
         row = 3
         for label in self.TEXTURE_PROFILE_NAMES:
             ttk.Label(body, text=label).grid(row=row, column=0, sticky="w", pady=2)
-            status_var = tk.StringVar(value="Saved" if label in self._director_texture_profiles else "—")
+            status_var = tk.StringVar(value="Saved" if label in self._director_texture_profiles else "â€”")
             self._director_texture_status_vars[label] = status_var
             ttk.Label(body, textvariable=status_var).grid(row=row, column=1, sticky="w", padx=(10, 20))
             ttk.Button(body, text="Capture", command=lambda x=label: self._capture_director_profile("texture", x)).grid(row=row, column=2, sticky="w", padx=4)
@@ -3203,18 +3595,18 @@ class VectorApp:
             row += 1
         ttk.Label(body, text="Secondary spatial", font=("TkDefaultFont", 10, "bold")).grid(row=row, column=0, sticky="w", pady=(8, 0))
         row += 1
-        ttk.Label(body, text="Bottom Focus — existing secondary/prostate generated path").grid(row=row, column=0, columnspan=4, sticky="w")
+        ttk.Label(body, text="Bottom Focus â€” existing secondary/prostate generated path").grid(row=row, column=0, columnspan=4, sticky="w")
         row += 1
 
         ttk.Separator(body, orient="horizontal").grid(row=row, column=0, columnspan=4, sticky="ew", pady=10)
         row += 1
-        ttk.Label(body, text="Top Spatial Focus — four-phase only", wraplength=260, font=("TkDefaultFont", 10, "bold")).grid(row=row, column=0, sticky="w")
+        ttk.Label(body, text="Top Spatial Focus â€” four-phase only", wraplength=260, font=("TkDefaultFont", 10, "bold")).grid(row=row, column=0, sticky="w")
         ttk.Label(body, text="Model").grid(row=row, column=1, sticky="w")
         ttk.Label(body, text="").grid(row=row, column=2, sticky="w")
         ttk.Label(body, text="Apply").grid(row=row, column=3, sticky="w")
         row += 1
         ttk.Label(body, text=("Four-phase E1-E4 only; no effect on three-phase Primary output or its alpha/beta plot.\n"
-                        "Electrode map: E1 glans · E2 shaft · E3 lower shaft · E4 root"),
+                        "Electrode map: E1 glans Â· E2 shaft Â· E3 lower shaft Â· E4 root"),
                   wraplength=720, justify="left",
                   foreground="#555").grid(row=row, column=0, columnspan=4, sticky="w", pady=(0,4))
         row += 1
@@ -3229,7 +3621,7 @@ class VectorApp:
         ttk.Label(body, text="").grid(row=row, column=2, sticky="w", pady=(8,0))
         ttk.Label(body, text="Apply").grid(row=row, column=3, sticky="w", pady=(8,0))
         row += 1
-        ttk.Label(body, text="Zone map: A prostate · B anus · C testicles/perineum",
+        ttk.Label(body, text="Zone map: A prostate Â· B anus Â· C testicles/perineum",
                   foreground="#555").grid(row=row, column=0, columnspan=4, sticky="w", pady=(0,4))
         row += 1
         for label in self.BOTTOM_FOCUS_PROFILE_NAMES:
@@ -3241,7 +3633,7 @@ class VectorApp:
         ttk.Label(body, text="Four-phase top headroom ceiling").grid(row=row, column=0, sticky="w", pady=(8,0))
         ttk.Scale(body, from_=0.60, to=1.0, variable=self.top_focus_nominal_ceiling, orient="horizontal", length=220).grid(row=row, column=1, columnspan=2, sticky="w", pady=(8,0))
         row += 1
-        ttk.Label(body, text="Four-phase top focus strength (0–175%)").grid(row=row, column=0, sticky="w")
+        ttk.Label(body, text="Four-phase top focus strength (0â€“175%)").grid(row=row, column=0, sticky="w")
         ttk.Scale(body, from_=0.0, to=1.75, variable=self.top_focus_strength, orient="horizontal", length=220).grid(row=row, column=1, columnspan=2, sticky="w")
         row += 1
         ttk.Label(body, text="Bottom focus strength").grid(row=row, column=0, sticky="w")
@@ -3293,7 +3685,7 @@ class VectorApp:
         row += 1
         for label in self.VARIATION_PROFILE_NAMES:
             ttk.Label(body, text=label).grid(row=row, column=0, sticky="w", pady=2)
-            status_var = tk.StringVar(value="Saved" if label in self._director_variation_profiles else "—")
+            status_var = tk.StringVar(value="Saved" if label in self._director_variation_profiles else "â€”")
             self._director_variation_status_vars[label] = status_var
             ttk.Label(body, textvariable=status_var).grid(row=row, column=1, sticky="w", padx=(10, 20))
             ttk.Button(body, text="Capture", command=lambda x=label: self._capture_director_profile("variation", x)).grid(row=row, column=2, sticky="w", padx=4)
@@ -3343,7 +3735,7 @@ class VectorApp:
         self._preset_slots[slot] = self._preset_snapshot()
         self._preset_active = slot
         name = self.preset_a_name.get() if slot == "A" else self.preset_b_name.get()
-        self.preset_status.set(f"Captured and active: {slot} — {name}")
+        self.preset_status.set(f"Captured and active: {slot} â€” {name}")
         self._save_settings()
 
     def _apply_preset(self, slot: str) -> None:
@@ -3380,7 +3772,7 @@ class VectorApp:
             self._preset_transition = None
             label = ("Baseline" if slot == "Baseline" else
                      (self.preset_a_name.get() if slot == "A" else self.preset_b_name.get()))
-            self.preset_status.set(f"Active: {slot} — {label}")
+            self.preset_status.set(f"Active: {slot} â€” {label}")
 
     def _toggle_ab_preset(self) -> None:
         self._apply_preset("B" if self._preset_active == "A" else "A")
@@ -3454,7 +3846,9 @@ class VectorApp:
             "Circular 0-180 follows a semicircle. Top-Left to Bottom-Right follows "
             "a 240-degree A-to-C arc with Vector's internal -30-degree alignment. "
             "Top-Right to Bottom-Left uses the corresponding +30-degree alignment. "
-            "ReStim Original builds one arc per detected stroke.\n\n"
+            "ReStim Original builds one arc per detected stroke. With Magik keyframe arcs "
+            "enabled, direct funscript playback uses an arc per keyframe interval for primary "
+            "alpha/beta, with a repeatable 7.5% rotation-switch probability at reversals.\n\n"
             "Base volume is the normal volume before the Volume response section "
             "and direction texture are applied.\n\n"
             "Smooth L0 position variation shifts the motion coordinate, not volume. "
@@ -3521,11 +3915,20 @@ class VectorApp:
         )
 
     def _send_sample(self, sample: OutputSample) -> None:
+        with self._input_lock:
+            if not self._input_ready or sample.calculated_at < self._input_epoch:
+                return
+            self._submit_sample(sample)
+
+    def _submit_sample(self, sample: OutputSample) -> None:
         result = self.output_composer.compose(sample, self._output_config)
         with self._four_phase_live_lock:
             self._four_phase_live_output = result.spatial_output
         with self._outgoing_volume_lock:
             self._outgoing_volumes = result.outgoing_volumes
+            overrides = result.primary_overrides or {}
+            self._outgoing_pulse = tuple(overrides.get(axis, value) for axis, value in
+                                         zip(("C0", "P0", "P3", "P1"), result.primary_args[4:]))
         self._status_updates.put((self.top_spatial_gain_display, result.gain_displays[0]))
         self._status_updates.put((self.bottom_spatial_gain_display, result.gain_displays[1]))
         self.restim_sender.submit(
@@ -3536,22 +3939,40 @@ class VectorApp:
 
     def _receive_l0(self, value: float, interval_ms: int = 0, received_at: float | None = None) -> None:
         now = time.monotonic() if received_at is None else float(received_at)
-        self.input_pipeline.receive_authored(value, interval_ms, now)
+        with self._input_lock:
+            if self._direct_input is None:
+                self._prepare_local_input(value, now)
+                self.input_pipeline.receive_authored(value, interval_ms, now)
+                self.vacuglide_control.motion.receive(value, interval_ms, now)
+                self._handy_l0_seen = now
 
     def _receive_generated_l0(self, value: float, interval_ms: int = 0,
                               received_at: float | None = None) -> None:
         now = time.monotonic() if received_at is None else float(received_at)
-        self.input_pipeline.receive_generated(value, interval_ms, now)
+        with self._input_lock:
+            if self._direct_input is None:
+                self._prepare_local_input(value, now)
+                self.input_pipeline.receive_generated(value, interval_ms, now)
+
+    def _prepare_local_input(self, value: float, now: float) -> None:
+        if not self._input_ready:
+            self.engine.rebase_input(value, now)
+            self._input_epoch = now
+            self._input_ready = True
 
     def neutral(self) -> None:
+        self.passage.reset()
         self.event_engine.clear_triggers()
         self.apply_config()
         self._reset_four_phase_group_delay()
         self.output_composer.reset_motion_direction()
-        self.engine.neutral()
+        with self._input_lock:
+            self.engine.neutral()
+            self.output_composer.reset_pulse_damping()
         neutral_volume = self.volume.get()
         with self._outgoing_volume_lock:
             self._outgoing_volumes = (neutral_volume, neutral_volume)
+            self._outgoing_pulse = (0.5,) * 4
         self.restim_sender.submit(
             lambda: self.restim.send_primary(
                 0.5, 0.5, (0.5, 0.5, 0.5, 0.5), neutral_volume, 0.5, 0.5, 0.5, 0.5),
@@ -3571,24 +3992,39 @@ class VectorApp:
             return
         self.apply_config()
         self._reset_four_phase_group_delay()
-        self.engine.resume()
+        with self._input_lock:
+            self.output_composer.reset_pulse_damping()
+            self.engine.resume()
 
     def stop(self) -> None:
+        desk = getattr(self, "output_desk", None)
+        if desk is not None:
+            desk.cancel_pending()
+        self.handy_control.stop()
+        self.vacuglide.stop()
+        self.passage.reset()
         self.event_engine.clear_triggers()
         self.generated_motion.authored()
         self._reset_four_phase_group_delay()
         self.output_composer.reset_motion_direction()
-        self.engine.stop()
-        with self._outgoing_volume_lock:
-            self._outgoing_volumes = (0.0, 0.0)
-        self.restim_sender.submit(
-            lambda: self.restim.send_primary(
-                0.5, 0.5, (0.5, 0.5, 0.5, 0.5), 0.0, 0.5, 0.5, 0.5, 0.5),
-            max_age_seconds=2.0)
+        with self._input_lock:
+            self.engine.stop()
+            self._input_epoch = time.monotonic()
+            self._mute_output()
         with self._four_phase_live_lock:
             order = self.electrode_order.get()
             self._four_phase_live_output = (
                 (0.5, 0.5, 0.5, 0.5), order, order, 0.0, "stopped")
+
+    def _mute_output(self) -> None:
+        self.output_composer.reset_pulse_damping()
+        with self._outgoing_volume_lock:
+            self._outgoing_volumes = (0.0, 0.0)
+            self._outgoing_pulse = None
+        self.restim_sender.submit(
+            lambda: self.restim.send_primary(
+                0.5, 0.5, (0.5, 0.5, 0.5, 0.5), 0.0, 0.5, 0.5, 0.5, 0.5),
+            max_age_seconds=2.0)
         self.prostate_sender.submit(
             lambda: self.prostate_restim.send_prostate(
                 0.5, 0.5, 0.0, 0.5, 0.5, 0.5, 0.5),
@@ -3618,6 +4054,11 @@ class VectorApp:
             variable.set(text)
         self._drain_controller_events()
         self._drain_director_requests()
+        desk = getattr(self, "output_desk", None)
+        if desk is not None:
+            desk.tick()
+        self.vacuglide_control.tick()
+        self.handy_control.tick()
         # Keep direct VLC/MPC timeline clocks live even when the timeline window
         # is closed. request_media_poll() is internally rate-limited and async.
         self.timeline.request_media_poll()
@@ -3640,7 +4081,7 @@ class VectorApp:
                           else self.preset_b_name.get()))
                 suffix = "" if self._preset_matches(target) else " (modified)"
                 self.preset_status.set(
-                    f"Active: {self._preset_active} — {label}{suffix}")
+                    f"Active: {self._preset_active} â€” {label}{suffix}")
         diag = self.engine.diagnostics()
         self._emit_runtime_health(diag)
         values = {
@@ -3667,25 +4108,45 @@ class VectorApp:
             self.diag_vars[key].set(value)
         self.variation_depth_live.set(f"Effect depth {diag.variation_depth * 100:.0f}%")
         volume_response = diag.output_volume / max(self.volume.get(), 1e-9)
-        self.volume_response_bar.set(self.volume_response_min.get(), self.volume_response_max.get(), volume_response)
+        self.volume_response_bar.set_live_value(volume_response)
         self.volume_response_value.set(f"{volume_response:.4f}")
         with self._outgoing_volume_lock:
             outgoing = self._outgoing_volumes
+            pulse = self._outgoing_pulse
+        config = self._output_config
+        timing_statuses = self.engine.primary_pulse_timing_status()
+        howl_pulse = config.howl_pulse and config.four_phase_spatial_model.startswith("Howl ")
+        axes = (
+            (self.frequency_bar, self.frequency_value, diag.frequency,
+             self.send_frequency, config.frequency_damping),
+            (self.pulse_frequency_bar, self.pulse_frequency_value, diag.pulse_frequency,
+             self.send_pulse_frequency, config.pulse_frequency_damping),
+            (self.pulse_rise_bar, self.pulse_rise_value, diag.pulse_rise_time,
+             self.send_pulse_rise, config.pulse_rise_damping),
+            (self.pulse_width_bar, self.pulse_width_value, diag.pulse_width,
+             self.send_pulse_width, config.pulse_width_damping),
+        )
+        for index, (bar, target_readout, target, enabled_var, damping) in enumerate(axes):
+            enabled = enabled_var.get()
+            command = pulse[index] if enabled and pulse is not None else None
+            bar.set_live_value(target, command if damping > 0 else None)
+            target_readout.set(f"{target:.4f}")
+            readout = self._pulse_command_readouts[index]
+            if command is None:
+                text = "Composed command: --" if enabled else "Send TCode off"
+            else:
+                label = "Composed command (orange)" if damping > 0 else "Composed command"
+                text = f"{label}: {command:.4f}"
+            status = timing_statuses[index]
+            if status != "Off":
+                if howl_pulse and PRIMARY_PULSE_AXES[index] in ("pulse_frequency", "pulse_width"):
+                    status = "Howl pulse supplies this axis"
+                text += f"   |   {status}"
+            readout.set(text)
         if outgoing is not None:
             self.outgoing_volume_value.set(
                 f"Composed V0 (before pressure): Primary {outgoing[0]:.4f} ({outgoing[0]*100:.1f}%)   |   "
                 f"Prostate {outgoing[1]:.4f} ({outgoing[1]*100:.1f}%)")
-        self.frequency_bar.set(self.frequency_min.get(), self.frequency_max.get(), diag.frequency)
-        self.frequency_value.set(f"{diag.frequency:.4f}")
-        self.pulse_frequency_bar.set(self.pulse_frequency_min.get(),
-                                     self.pulse_frequency_max.get(), diag.pulse_frequency)
-        self.pulse_frequency_value.set(f"{diag.pulse_frequency:.4f}")
-        self.pulse_rise_bar.set(self.pulse_rise_min.get(), self.pulse_rise_max.get(),
-                                diag.pulse_rise_time)
-        self.pulse_rise_value.set(f"{diag.pulse_rise_time:.4f}")
-        self.pulse_width_bar.set(self.pulse_width_min.get(), self.pulse_width_max.get(),
-                                 diag.pulse_width)
-        self.pulse_width_value.set(f"{diag.pulse_width:.4f}")
         for key, value in (("alpha_prostate", diag.alpha_prostate),
                            ("beta_prostate", diag.beta_prostate),
                            ("volume_prostate", diag.volume_prostate)):
@@ -3758,7 +4219,7 @@ class VectorApp:
         self.electrode_morph_bar["value"] = morph_amount
         if morph_kind == "window":
             self.four_phase_moving_sequence_live.set(
-                f"{morph_source}→{morph_target} | {morph_amount * 100:.0f}%")
+                f"{morph_source}â†’{morph_target} | {morph_amount * 100:.0f}%")
         elif morph_kind == "carousel" and self.four_phase_moving_sequence.get():
             self.four_phase_moving_sequence_live.set("carousel priority")
         elif morph_kind == "depth spread":
@@ -3786,6 +4247,11 @@ class VectorApp:
                                f"{morph_amount * 100:.0f}%")
         self.four_phase_roles.set(sequence_status)
         self._refresh_mfp_status()
+        self.session_header.refresh(diag.state)
+        volume_min, volume_max = self.volume_response_bar.bounds
+        pulse_min, pulse_max = self.pulse_frequency_bar.bounds
+        rise_min, rise_max = self.pulse_rise_bar.bounds
+        width_min, width_max = self.pulse_width_bar.bounds
         summaries = {
             "MultiFunPlayer input": f"{self.mfp_status.get()} | {self.mfp_host.get()}:{self.mfp_port.get()}",
             "ReStim output": f"Primary: {self.restim_status.get()} | Prostate: {self.prostate_status.get()}",
@@ -3793,12 +4259,12 @@ class VectorApp:
             "Volume response": (
                 f"Base {self.volume.get() * 100:.0f}% | "
                 f"primary ceiling {self.four_phase_volume_ceiling.get() * 100:.0f}% | "
-                f"rest {self.volume_rest_level.get() * 100:.0f}% | response {self.volume_response_min.get():.2f}-{self.volume_response_max.get():.2f}"
+                f"rest {self.volume_rest_level.get() * 100:.0f}% | response {volume_min:.2f}-{volume_max:.2f}"
             ),
             "Frequency": f"{diag.frequency:.3f} | ramp {self.frequency_ramp_level.get():.2f}",
-            "Pulse frequency": f"{diag.pulse_frequency:.3f} | range {self.pulse_frequency_min.get():.2f}-{self.pulse_frequency_max.get():.2f}",
-            "Pulse rise time": f"{diag.pulse_rise_time:.3f} | range {self.pulse_rise_min.get():.2f}-{self.pulse_rise_max.get():.2f}",
-            "Pulse width": f"{diag.pulse_width:.3f} | range {self.pulse_width_min.get():.2f}-{self.pulse_width_max.get():.2f}",
+            "Pulse frequency": f"{diag.pulse_frequency:.3f} | range {pulse_min:.2f}-{pulse_max:.2f}",
+            "Pulse rise time": f"{diag.pulse_rise_time:.3f} | range {rise_min:.2f}-{rise_max:.2f}",
+            "Pulse width": f"{diag.pulse_width:.3f} | range {width_min:.2f}-{width_max:.2f}",
             "Prostate controls": f"alpha {diag.alpha_prostate:.3f} beta {diag.beta_prostate:.3f} volume {diag.volume_prostate * 100:.0f}% | phase {self.prostate_phase_degrees.get():+.0f} degrees",
             "Four-phase primary motion": (
                 f"{sequence_status} | "
@@ -3859,7 +4325,59 @@ class VectorApp:
         self._last_health_log_at = now
 
     def close(self) -> None:
+        desk = getattr(self, "output_desk", None)
+        if desk is not None:
+            desk.cancel_pending()
+        self.handy_control._resume_pending = False
+        if not getattr(self, "_handy_closed", False):
+            self._handy_closed = True
+            self.handy_control.playing = self.handy_control.previewing = False
+            self._handy_close_future = self.handy.stop()
+        if getattr(self, "_vacuglide_close_pending", False):
+            return
+        self._vacuglide_close_pending = True
+        future = self.vacuglide.stop(release=True)
+
+        def finish():
+            handy_future = getattr(self, "_handy_close_future", None)
+            if handy_future is not None and not handy_future.done():
+                self.root.after(100, finish)
+                return
+            if handy_future is not None:
+                try:
+                    handy_future.result()
+                except Exception:
+                    if not messagebox.askyesno("Handy stop unconfirmed",
+                            "Handy did not confirm its stop. Use its physical stop control. Close Vector anyway?",
+                            parent=self.root):
+                        self._vacuglide_close_pending = False
+                        self._handy_closed = False
+                        return
+                self._handy_close_future = None
+            if not future.done():
+                self.root.after(100, finish)
+                return
+            try:
+                _, receipt = future.result()
+            except Exception:
+                receipt = {}
+            if not receipt.get("ok") and not messagebox.askyesno(
+                    "VacuGlide stop unconfirmed",
+                    "Use the VacuGlide power control now. Close Vector anyway?",
+                    parent=self.root):
+                self._vacuglide_close_pending = False
+                self._handy_closed = False
+                return
+            self.vacuglide.close()
+            self._close_app()
+
+        finish()
+
+    def _close_app(self) -> None:
+        self.handy.close(stop=False)
         self._automatic_ready_stop.set()
+        if self._direct_input is not None:
+            self._direct_input.close()
         self.generated_motion.close()
         self._save_settings()
         self.xinput.close()

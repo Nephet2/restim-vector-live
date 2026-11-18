@@ -73,6 +73,11 @@ class OutputConfig:
     volume: float
     custom_curves: tuple
     variety_started: float
+    magik_keyframe_arcs: bool = False
+    frequency_damping: float = 0.0
+    pulse_frequency_damping: float = 0.0
+    pulse_rise_damping: float = 0.0
+    pulse_width_damping: float = 0.0
 
 
 def freeze_curves(curves):

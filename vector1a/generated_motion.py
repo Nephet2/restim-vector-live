@@ -19,6 +19,7 @@ class MotionPlan:
     transition_seconds: float = 5.0
     duration_seconds: float = 180.0
     reason: str = ""
+    variation: float = 0.0
 
     @classmethod
     def validated(cls, body: dict) -> "MotionPlan":
@@ -45,8 +46,31 @@ class MotionPlan:
             raise ValueError("transition_seconds must be between 1 and 15")
         if not 30.0 <= duration <= 600.0:
             raise ValueError("duration_seconds must be between 30 and 600")
+        from .passage import number
+        variation = number(body.get("variation", 0), "variation", 0, 1)
         return cls(pattern, minimum, maximum, stroke_ms, transition, duration,
-                   str(body.get("reason", "")).strip()[:240])
+                   str(body.get("reason", "")).strip()[:240], variation)
+
+    def bounds_at(self, elapsed):
+        # Slow, incommensurate curves produce coherent phrases rather than noise.
+        amount = self.variation
+        if amount == 0:
+            return self.minimum, self.maximum
+        depth = 1.0 - amount * 0.45 * (0.5 + 0.5 * math.sin(elapsed * 2 * math.pi / 23.0))
+        span = self.maximum - self.minimum
+        drift = math.sin(elapsed * 2 * math.pi / 37.0) * span * (1.0-depth) * 0.45
+        centre = (self.minimum + self.maximum) / 2 + drift
+        return centre-span*depth/2, centre+span*depth/2
+
+    def phase_at(self, elapsed):
+        # Integral of the pace curve: changing pace never resets motion phase.
+        # Modulation tapers at the legal pace boundaries, preserving 125..3000ms.
+        base = self.stroke_duration_ms
+        depth = min(0.25*self.variation, max(0.0, base/125.0-1.0),
+                    max(0.0, 1.0-base/3000.0))
+        omega = 2*math.pi/17.0
+        return (elapsed + depth*(1.0-math.cos(omega*elapsed))/omega) / (2*base/1000)
+
 
 
 class GeneratedMotionSource:
@@ -85,8 +109,9 @@ class GeneratedMotionSource:
             elapsed = max(0.0, now - self._plan_started_at)
             blend = min(1.0, elapsed / plan.transition_seconds)
             blend = blend * blend * (3.0 - 2.0 * blend)
-            low = self._transition_from + (plan.minimum - self._transition_from) * blend
-            high = self._transition_from + (plan.maximum - self._transition_from) * blend
+            lo, hi = plan.bounds_at(elapsed)
+            low = self._transition_from + (lo - self._transition_from) * blend
+            high = self._transition_from + (hi - self._transition_from) * blend
         return min(low, high), max(low, high)
 
     def apply(self, plan: MotionPlan, starting_value: float) -> dict:
@@ -148,6 +173,7 @@ class GeneratedMotionSource:
                 "pattern": plan.pattern, "minimum": plan.minimum, "maximum": plan.maximum,
                 "stroke_duration_ms": plan.stroke_duration_ms,
                 "derived_cycles_per_minute": round(30000.0 / plan.stroke_duration_ms, 2),
+                "variation": plan.variation,
                 "transition_seconds": plan.transition_seconds,
                 "duration_seconds": plan.duration_seconds, "reason": plan.reason,
             } if active else None,
@@ -180,8 +206,9 @@ class GeneratedMotionSource:
                     elapsed = now - self._plan_started_at
                     # duration_seconds is a review horizon, not a motion kill-switch.
                     # A delayed or failed Director decision must not flatten L0.
-                    phase = elapsed / (2.0 * plan.stroke_duration_ms / 1000.0)
-                    target = plan.minimum + (plan.maximum - plan.minimum) * self._wave(plan.pattern, phase)
+                    phase = plan.phase_at(elapsed)
+                    lo, hi = plan.bounds_at(elapsed)
+                    target = lo + (hi - lo) * self._wave(plan.pattern, phase)
                     blend = min(1.0, elapsed / plan.transition_seconds)
                     blend = blend * blend * (3.0 - 2.0 * blend)
                     value = self._transition_from + (target - self._transition_from) * blend
