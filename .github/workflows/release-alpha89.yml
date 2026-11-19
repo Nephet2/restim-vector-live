@@ -1,0 +1,61 @@
+name: Publish alpha89 source
+on:
+  push:
+    branches: [release/1.6.0-alpha89]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.13', '3.14']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install ".[test,preview]"
+      - run: python -m pytest -q
+      - run: python -m compileall -q vector1a packaging standalone_entry.py
+  package:
+    needs: test
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Verify source version
+        shell: pwsh
+        run: |
+          $version = python -c "from vector1a import __version__; print(__version__)"
+          if ($version -ne '1.6.0-alpha89') { throw 'This workflow only publishes alpha89' }
+      - name: Download hash-locked Windows dependencies
+        run: |
+          python -m pip download --no-deps --only-binary=:all: --require-hashes -r packaging/windows-py313-requirements.txt --dest wheels
+      - name: Build and inspect the source package
+        run: |
+          python packaging/build_custom_source.py --wheel-dir wheels --output dist
+          python packaging/check_archives.py
+      - name: Smoke-test the extracted normal source entry point without output
+        shell: pwsh
+        run: |
+          $check = Join-Path $env:RUNNER_TEMP 'alpha89-source-check'
+          Expand-Archive -LiteralPath 'dist/Vector1A-1.6.0-alpha89-source-windows.zip' -DestinationPath $check
+          $entry = Join-Path $check 'Vector1A-1.6.0-alpha89/standalone_entry.py'
+          python -I (Join-Path $check 'Vector1A-1.6.0-alpha89/check_bluetooth_dependencies.py')
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled Bluetooth dependency check failed' }
+          python -I $entry --smoke-test
+          if ($LASTEXITCODE -ne 0) { throw 'Source entry-point smoke test failed' }
+      - name: Publish source prerelease at this tested commit
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.6.0-alpha89 'dist/Vector1A-1.6.0-alpha89-source-windows.zip' 'dist/Vector1A-1.6.0-alpha89-source-windows.zip.sha256' --repo "$env:GITHUB_REPOSITORY" --target "$env:GITHUB_SHA" --prerelease --latest=false --title 'Vector 1A — v89: Tuned response defaults' --notes-file RELEASE_NOTES_1.6.0-alpha89.md
+          if ($LASTEXITCODE -ne 0) { throw 'Source release creation failed; existing releases were not overwritten' }

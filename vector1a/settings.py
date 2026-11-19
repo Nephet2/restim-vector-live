@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import json
 import os
+from copy import deepcopy
 from pathlib import Path
+
+from .response_defaults import RESPONSE_DEFAULTS
 
 
 def settings_path() -> Path:
@@ -15,6 +18,8 @@ def load_settings() -> dict:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         return data if isinstance(data, dict) else {}
+    except FileNotFoundError:
+        return deepcopy(RESPONSE_DEFAULTS)
     except (OSError, ValueError, TypeError):
         return {}
 

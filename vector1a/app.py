@@ -62,6 +62,14 @@ from .focus import (TOP_FOCUS_LABELS, BOTTOM_FOCUS_LABELS, apply_top_focus,
 from . import __version__
 
 
+MAX_PULSE_DAMPING_SECONDS = {
+    "frequency": 10.0,
+    "pulse_frequency": 30.0,
+    "pulse_rise": 10.0,
+    "pulse_width": 30.0,
+}
+
+
 class CollapsibleSection(ttk.Frame):
     def __init__(self, parent, title: str, collapsed: bool = False):
         super().__init__(parent, padding=(2, 2))
@@ -704,10 +712,14 @@ class VectorApp:
                 custom_curves=freeze_curves(self._custom_curves),
                 variety_started=self._variety_started,
                 magik_keyframe_arcs=self.magik_keyframe_arcs.get(),
-                frequency_damping=min(5.0, max(0.0, self.frequency_damping.get())),
-                pulse_frequency_damping=min(5.0, max(0.0, self.pulse_frequency_damping.get())),
-                pulse_rise_damping=min(5.0, max(0.0, self.pulse_rise_damping.get())),
-                pulse_width_damping=min(5.0, max(0.0, self.pulse_width_damping.get())))
+                frequency_damping=min(MAX_PULSE_DAMPING_SECONDS["frequency"],
+                                      max(0.0, self.frequency_damping.get())),
+                pulse_frequency_damping=min(MAX_PULSE_DAMPING_SECONDS["pulse_frequency"],
+                                            max(0.0, self.pulse_frequency_damping.get())),
+                pulse_rise_damping=min(MAX_PULSE_DAMPING_SECONDS["pulse_rise"],
+                                       max(0.0, self.pulse_rise_damping.get())),
+                pulse_width_damping=min(MAX_PULSE_DAMPING_SECONDS["pulse_width"],
+                                        max(0.0, self.pulse_width_damping.get())))
         except tk.TclError:
             return
         self._output_config = snapshot
@@ -2344,7 +2356,7 @@ class VectorApp:
             self._apply_primary_pulse_timing()
 
         add_control("Damping (s)", getattr(self, f"{axis}_damping"),
-                    0, 5, .05, self._publish_output_config)
+                    0, MAX_PULSE_DAMPING_SECONDS[axis], .05, self._publish_output_config)
         add_control("Timing (ms)", offset, -500, 500, 10, self._apply_primary_pulse_timing)
         add_control("Stroke phase (°)", phase, -180, 180, 5, self._apply_primary_pulse_timing)
         ttk.Button(controls, text="Zero timing", command=zero_timing).pack(side="left")

@@ -21,8 +21,9 @@ def main():
         from unittest.mock import patch
         import tkinter as tk
         from vector1a.app import VectorApp
+        from vector1a.response_defaults import RESPONSE_DEFAULTS
         with ExitStack() as guards:
-            guards.enter_context(patch('vector1a.app.load_settings', return_value={}))
+            guards.enter_context(patch('vector1a.app.load_settings', return_value=RESPONSE_DEFAULTS))
             guards.enter_context(patch('vector1a.app.save_settings'))
             for method in ('_auto_start_session', '_auto_start_director', 'show_setup_guide'):
                 guards.enter_context(patch.object(VectorApp, method, lambda self: None))
