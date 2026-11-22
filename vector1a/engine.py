@@ -15,9 +15,19 @@ from .modifier import ModifierValues, interpolate, transform_segment
 from .output_ranges import scale_response, unit_range
 from .parameter_curves import default_curves, validate_parameter_curves, shape_output
 from .timing_variation import TimingVariation
+from .envelope import EnvelopeChain, advance_lookup
 
 
 PRIMARY_PULSE_AXES = ("frequency", "pulse_frequency", "pulse_rise", "pulse_width")
+# Output envelope axes: primary V0 then the primary pulse commands in
+# PRIMARY_PULSE_AXES order.  Off unless configure_envelopes() enables an axis.
+ENVELOPE_AXES = ("V0", "C0", "P0", "P3", "P1")
+ENVELOPE_OPTIONS = frozenset(("tau_attack", "tau_release", "jerk_limit", "compensation"))
+# Reversal window: L0 moves smaller than this (1% of travel) are ignored when
+# dating turning points, so jitter or a nudge cannot count as a fresh turn.
+REVERSAL_DEADBAND = 0.01
+# A slow V0 release keeps intensity up after input stops, so it has a tight cap.
+ENVELOPE_MAX_TAU = {"V0": 2.0, "C0": 30.0, "P0": 30.0, "P3": 30.0, "P1": 30.0}
 
 
 @dataclass(frozen=True)
@@ -50,6 +60,10 @@ class OutputSample:
     keyframe_arc: tuple[float, float] | None = None
     shifted_primary_pulse: tuple[float, ...] | None = None
     primary_pulse_smoothed: tuple[bool, ...] = ()
+    # Base volume that volume and volume_prostate were scaled by.  A sample can
+    # be released after Base volume changes; the composer uses this to undo
+    # the old scale instead of dividing by the new one.  None: unknown.
+    volume_scale: float | None = None
 
     @property
     def primary_pulse(self) -> tuple[float, ...]:
@@ -126,6 +140,14 @@ class VectorEngine:
         self.volume_ramp_speed_ratio = 20.0
         self.volume_ramp_up_seconds = 1.0
         self.volume_idle_seconds = 0.25
+        # 0 = off.  Otherwise input only counts as active if L0 changed direction
+        # within this many seconds, so a one-way parking move stays at rest.
+        self.stroke_reversal_window = 0.0
+        self._reset_reversal_tracking()
+        # 0 = instant step.  Otherwise V0 and Prostate V0 ease to rest on an
+        # S-curve over this many seconds once the rest gate turns off.
+        self.volume_fall_seconds = 0.0
+        self._reset_rest_fall()
         self._volume_was_active = False
         self._volume_active_since = now
         self.frequency_ramp_level = 1.0
@@ -169,6 +191,12 @@ class VectorEngine:
         self.pulse_smoothing_seconds = 0.0
         self._primary_pulse_timing = ((0.0, 0.0),) * len(PRIMARY_PULSE_AXES)
         self._primary_pulse_timing_status = ("Off",) * len(PRIMARY_PULSE_AXES)
+        self._envelope_settings: dict[str, dict] = {}
+        self._envelope_chains: dict[str, EnvelopeChain] = {}
+        self._envelope_key = None
+        self._envelope_history: dict[str, deque[tuple[float, float]]] = {}
+        self._envelope_limited: dict[str, bool] = {}
+        self._envelope_soft_start = False
         self._state = "Stopped"
         self._output_enabled = False
         self._diag = Diagnostics()
@@ -212,7 +240,10 @@ class VectorEngine:
                   spatial_curve: str = "Linear",
                   spatial_blend: float = 0.0,
                   parameter_curves: dict | None = None,
-                  pulse_smoothing_seconds: float = 0.0) -> None:
+                  pulse_smoothing_seconds: float = 0.0,
+                  volume_idle_seconds: float = 0.25,
+                  stroke_reversal_window: float = 0.0,
+                  volume_fall_seconds: float = 0.0) -> None:
         with self._lock:
             if parameter_curves is not None:
                 self.parameter_curves = validate_parameter_curves(parameter_curves)
@@ -229,6 +260,11 @@ class VectorEngine:
             self.volume_rest_level = min(1.0, max(0.0, float(volume_rest_level)))
             self.volume_ramp_speed_ratio = min(40.0, max(10.0, float(volume_ramp_speed_ratio)))
             self.volume_ramp_up_seconds = min(10.0, max(0.0, float(volume_ramp_up_seconds)))
+            # "Rest after": input silence before V0, C0, P0, P1 and Prostate V0
+            # drop to their rest levels.  Scripts with holds need more than 0.25 s.
+            self.volume_idle_seconds = min(5.0, max(0.05, float(volume_idle_seconds)))
+            self.stroke_reversal_window = min(10.0, max(0.0, float(stroke_reversal_window)))
+            self.volume_fall_seconds = min(5.0, max(0.0, float(volume_fall_seconds)))
             self.frequency_ramp_level = min(1.0, max(0.0, float(frequency_ramp_level)))
             self.frequency_ramp_speed_ratio = min(10.0, max(1.0, float(frequency_ramp_speed_ratio)))
             self.pulse_frequency_ratio = min(10.0, max(1.0, float(pulse_frequency_ratio)))
@@ -371,6 +407,7 @@ class VectorEngine:
                 self._stroke_start_position = self._last_input_position
             if new_direction:
                 self._stroke_direction = new_direction
+            self._track_reversal(value, now)
             self._segment = SegmentState(
                 self._input_count, start_time, end_time, start_position, value,
                 normalized_speed,
@@ -394,9 +431,11 @@ class VectorEngine:
             self.timing_variation.reset()
             self._range_scale, self._range_scale_time = 1.0, None
             self._volume_was_active = self._pulse_was_active = self._width_was_active = False
+            self._reset_rest_fall()
             self._stroke_start_time = self._last_input_time = now
             self._stroke_start_position = self._last_input_position = self._raw_l0 = value
             self._stroke_direction = 0
+            self._reset_reversal_tracking()
             self._segment = SegmentState(self._input_count, now, now, value, value)
             if self._state == "Running":
                 self._state = "Buffering"
@@ -485,6 +524,7 @@ class VectorEngine:
         with self._lock:
             self.timing_variation.reset()
             self._queue.clear()
+            self._envelope_soft_start = True   # An enabled V0 envelope rises from zero.
             self._reset_primary_pulse_timing()
             self._range_scale_time = None
             self._range_scale = 1.0
@@ -732,8 +772,10 @@ class VectorEngine:
                  abs(self._completed_strokes[-1].end_position-self._completed_strokes[-1].start_position)
                  if self._completed_strokes else None),
                 keyframe_arc=self._keyframe_arc,
+                volume_scale=self.volume,
             )
             heapq.heappush(self._queue, (sample.due_at, sample.sequence, sample))
+            self._feed_envelopes(scheduled_at, sample)
             history = self._primary_pulse_history
             if history and scheduled_at < history[-1][0]:
                 self._reset_primary_pulse_timing()
@@ -830,6 +872,138 @@ class VectorEngine:
         self._primary_pulse_history.clear()
         self._primary_pulse_timing_status = tuple(
             "Buffering" if any(timing) else "Off" for timing in self._primary_pulse_timing)
+        self._reset_envelopes()
+
+    # -- Output envelopes (attack/release, jerk limit, delay compensation) --
+
+    def configure_envelopes(self, settings) -> None:
+        """Enable per-axis envelopes: {axis: options or None}; None/absent = off.
+
+        Options: tau_attack, tau_release (s), jerk_limit (normalized units/s^3,
+        None or 0 = off) and compensation ("none", "ma", "ma+attack").
+        Invalid settings raise ValueError and leave the current ones in place.
+        """
+        cleaned = {}
+        for axis, options in (settings or {}).items():
+            if axis not in ENVELOPE_AXES:
+                raise ValueError(f"unknown envelope axis {axis!r}")
+            if options is None:
+                continue
+            options = dict(options)
+            unknown = set(options) - ENVELOPE_OPTIONS
+            if unknown:
+                raise ValueError(f"unknown envelope option(s) {sorted(unknown)}")
+            cap = ENVELOPE_MAX_TAU[axis]
+            for name in ("tau_attack", "tau_release"):
+                if float(options.get(name, 0.0)) > cap:
+                    raise ValueError(f"{axis} {name} must be at most {cap:g} s")
+            EnvelopeChain(1.0 / self.rate_hz, axis_range=1.0, **options)  # Validates.
+            cleaned[axis] = options
+        with self._lock:
+            if cleaned != self._envelope_settings:
+                self._envelope_settings = cleaned
+                self._envelope_key = None
+
+    def envelope_status(self) -> dict:
+        with self._lock:
+            self._ensure_envelope_chains()
+            return {axis: {"advance_seconds": chain.advance_seconds,
+                           "window_samples": chain.window_samples,
+                           "buffer_limited": self._envelope_limited.get(axis, False)}
+                    for axis, chain in self._envelope_chains.items()}
+
+    def _envelope_ranges(self) -> dict[str, float]:
+        ranges = {"V0": 1.0}
+        for axis, (low, high) in zip(ENVELOPE_AXES[1:], self.pulse_command_ranges()):
+            ranges[axis] = max(1e-6, high - low)
+        return ranges
+
+    def _ensure_envelope_chains(self) -> None:
+        ranges = self._envelope_ranges()
+        settings_key = tuple(sorted((axis, tuple(sorted(options.items())))
+                                    for axis, options in self._envelope_settings.items()))
+        key = (self.rate_hz, tuple(sorted(ranges.items())), settings_key)
+        if key == self._envelope_key:
+            return
+        chains = {}
+        for axis, options in self._envelope_settings.items():
+            chain = EnvelopeChain(1.0 / self.rate_hz, axis_range=ranges[axis], **options)
+            history = self._envelope_history.setdefault(axis, deque())
+            if history:
+                chain.reset(history[-1][1])      # A settings change continues smoothly.
+            elif axis == "V0" and self._envelope_soft_start:
+                chain.reset(0.0)
+            chains[axis] = chain
+        for axis in list(self._envelope_history):
+            if axis not in chains:
+                del self._envelope_history[axis]
+        self._envelope_chains = chains
+        self._envelope_key = key
+        self._envelope_soft_start = False
+
+    def _reset_envelopes(self) -> None:
+        for history in self._envelope_history.values():
+            history.clear()
+        self._envelope_limited = {}
+        if self._envelope_chains:
+            for axis, chain in self._envelope_chains.items():
+                chain.reset(0.0 if axis == "V0" and self._envelope_soft_start else None)
+            self._envelope_soft_start = False
+
+    def _feed_envelopes(self, at_time: float, sample: OutputSample) -> None:
+        """Run enabled envelopes in calculation order (caller holds the lock)."""
+        if not self._envelope_settings:
+            return
+        self._ensure_envelope_chains()
+        # V0 is smoothed as its 0-1 response, so a Base volume change never meets
+        # older values scaled by the previous Base volume.
+        response = sample.volume / sample.volume_scale if sample.volume_scale else 0.0
+        inputs = dict(zip(ENVELOPE_AXES, (response,) + sample.primary_pulse))
+        horizon = at_time - (self.lookahead_seconds + 1.0)
+        for axis, chain in self._envelope_chains.items():
+            history = self._envelope_history[axis]
+            history.append((at_time, chain.step(inputs[axis])))
+            while len(history) > 1 and history[0][0] < horizon:
+                history.popleft()
+
+    def _apply_envelopes(self, sample: OutputSample, baseline: tuple[float, ...],
+                         calculated_volume: float) -> OutputSample:
+        """Replace enabled axes with the advanced envelope (caller holds the lock).
+
+        Release-time changes (timing variation) are kept as an offset, as
+        _shift_primary_pulse does.  Envelope axes are marked smoothed so the
+        composer's symmetric damping does not filter them twice.
+        """
+        if not self._envelope_chains:
+            return sample
+        values = list(sample.shifted_primary_pulse or sample.primary_pulse)
+        smoothed = list(sample.primary_pulse_smoothed or (False,) * len(PRIMARY_PULSE_AXES))
+        volume = sample.volume
+        pulse_changed = False
+        bounds = self.pulse_command_ranges()
+        for axis, chain in self._envelope_chains.items():
+            value, limited = advance_lookup(self._envelope_history[axis],
+                                            sample.calculated_at, chain.advance_seconds)
+            self._envelope_limited[axis] = limited
+            if value is None:
+                continue
+            if axis == "V0":
+                # Back to this sample's own Base volume, which the composer undoes.
+                scale = sample.volume_scale or 0.0
+                volume = min(scale, max(0.0, value * scale + sample.volume
+                                        - calculated_volume))
+                continue
+            index = ENVELOPE_AXES.index(axis) - 1
+            low, high = bounds[index]
+            values[index] = max(low, min(high, value + sample.primary_pulse[index]
+                                         - baseline[index]))
+            smoothed[index] = True
+            pulse_changed = True
+        changes = {"volume": volume}
+        if pulse_changed:
+            changes.update(shifted_primary_pulse=tuple(values),
+                           primary_pulse_smoothed=tuple(smoothed))
+        return replace(sample, **changes)
 
     def _smooth_primary_pulse(self, center: float) -> tuple[float, ...] | None:
         history = self._primary_pulse_history
@@ -914,8 +1088,10 @@ class VectorEngine:
         for sample in due:
             with self._lock:
                 baseline = sample.primary_pulse
+                calculated_volume = sample.volume
                 sample = self.timing_variation.apply(self, sample)
                 sample = self._shift_primary_pulse(sample, baseline)
+                sample = self._apply_envelopes(sample, baseline, calculated_volume)
             sample = self._range_preserved_sample(sample)
             self.send_sample(sample)
             actual = self.clock() - sample.calculated_at
@@ -962,25 +1138,118 @@ class VectorEngine:
         return shape_output(self.parameter_curves['primary_volume'], response,
                             self.volume_response_min, self.volume_response_max)[0]
 
+    def _reset_reversal_tracking(self) -> None:
+        self._last_reversal_time: float | None = None
+        self._turn_direction = 0                      # +1 rising, -1 falling, 0 unknown.
+        self._turn_extreme: float | None = None       # Furthest position this way.
+        self._turn_anchor: float | None = None        # Last position that dated the extreme.
+        self._turn_anchor_time: float | None = None
+        self._turn_last_value: float | None = None
+        self._turn_last_move_time: float | None = None
+
+    def _track_reversal(self, value: float, now: float) -> None:
+        """Turning points for the reversal window, with a movement deadband.
+
+        Moves smaller than REVERSAL_DEADBAND neither reverse the direction nor
+        re-date the extreme, and movement that starts after L0 has stood still
+        for longer than Rest after cannot re-date the old stroke either.  So a
+        tiny nudge after a pause cannot make a later parking move look like a
+        fresh turn.  Separate from the stroke detection that shapes the
+        output, which is unchanged.
+        """
+        band = REVERSAL_DEADBAND
+        continuous = (self._turn_last_move_time is not None
+                      and now - self._turn_last_move_time <= self.volume_idle_seconds)
+        if self._turn_last_value is None or abs(value - self._turn_last_value) > 0.00005:
+            self._turn_last_move_time = now
+        self._turn_last_value = value
+        if self._turn_extreme is None:
+            self._turn_extreme = self._turn_anchor = value
+            self._turn_anchor_time = now
+            return
+        direction = self._turn_direction
+        if direction >= 0 and value > self._turn_extreme:
+            self._turn_extreme = value
+        elif direction <= 0 and value < self._turn_extreme:
+            self._turn_extreme = value
+        if direction == 0:
+            if abs(value - self._turn_anchor) > band:
+                self._turn_direction = 1 if value > self._turn_anchor else -1
+                self._turn_extreme = self._turn_anchor = value
+                self._turn_anchor_time = now
+            return
+        if direction * (value - self._turn_anchor) > band:
+            # Clearly further the same way: the extreme is dated now, unless
+            # this move only began after L0 had stopped.
+            self._turn_anchor = value
+            if continuous:
+                self._turn_anchor_time = now
+        elif direction * (self._turn_extreme - value) > band:
+            # Clearly back the other way: the turn happened at the anchor time.
+            self._last_reversal_time = self._turn_anchor_time
+            self._turn_direction = -direction
+            self._turn_extreme = self._turn_anchor = value
+            self._turn_anchor_time = now
+
+    def _recently_driven(self, at_time: float) -> bool:
+        """Shared rest gate: recent input and, if required, a recent reversal."""
+        if (at_time - self._last_input_time) > self.volume_idle_seconds:
+            return False
+        if self.stroke_reversal_window > 0.0:
+            return (self._last_reversal_time is not None
+                    and at_time - self._last_reversal_time <= self.stroke_reversal_window)
+        return True
+
+    def _reset_rest_fall(self) -> None:
+        # Level factors (rest level .. 1) last applied, and where a fall began.
+        self._volume_factor: float | None = None
+        self._volume_fall_from = self._volume_fall_since = None
+        self._volume_rise_from: float | None = None
+        self._prostate_factor = 1.0
+        self._prostate_was_active = False
+        self._prostate_fall_from = self._prostate_fall_since = None
+
+    def _falling_factor(self, at_time: float, since: float | None,
+                        start: float | None, rest: float) -> float:
+        """S-curve (half cosine) from start to rest over volume_fall_seconds."""
+        if self.volume_fall_seconds <= 0.0 or since is None or start is None:
+            return rest
+        progress = (at_time - since) / self.volume_fall_seconds
+        if progress >= 1.0:
+            return rest
+        progress = max(0.0, progress)
+        return rest + (start - rest) * (0.5 + 0.5 * math.cos(math.pi * progress))
+
     def _calculate_volume(self, at_time: float, speed_percent: float) -> float:
         if not self.dynamic_volume:
             return self._volume_response(1.0)
-        active = ((at_time - self._last_input_time) <= self.volume_idle_seconds
-                  and speed_percent > 0.5)
+        active = self._recently_driven(at_time) and speed_percent > 0.5
         ratio = self.volume_ramp_speed_ratio
         generated = ((ratio - 1.0) + min(1.0, max(0.0, speed_percent / 100.0))) / ratio
+        rest = self.volume_rest_level
         if not active:
+            if self._volume_was_active:
+                self._volume_fall_since = at_time
+                self._volume_fall_from = self._volume_factor
             self._volume_was_active = False
-            return self._volume_response(generated * self.volume_rest_level)
+            factor = self._falling_factor(at_time, self._volume_fall_since,
+                                          self._volume_fall_from, rest)
+            self._volume_factor = factor
+            return self._volume_response(generated * factor)
         if not self._volume_was_active:
             self._volume_active_since = at_time
             self._volume_was_active = True
+            # The return ramp starts wherever a fall had reached (rest if none).
+            self._volume_rise_from = (rest if self._volume_factor is None
+                                      else self._volume_factor)
         if self.volume_ramp_up_seconds <= 0:
             attack = 1.0
         else:
             progress = min(1.0, max(0.0, (at_time - self._volume_active_since) /
                                         self.volume_ramp_up_seconds))
-            attack = self.volume_rest_level + (1.0 - self.volume_rest_level) * progress
+            start = rest if self._volume_rise_from is None else self._volume_rise_from
+            attack = start + (1.0 - start) * progress
+        self._volume_factor = attack
         return self._volume_response(generated * attack)
 
     def set_parameter_curves(self, curves):
@@ -1006,7 +1275,7 @@ class VectorEngine:
 
     def _calculate_frequency(self, at_time: float, speed_percent: float) -> float:
         speed = (speed_percent / 100.0
-                 if (at_time - self._last_input_time) <= self.volume_idle_seconds else 0.0)
+                 if self._recently_driven(at_time) else 0.0)
         ratio = self.frequency_ramp_speed_ratio
         value = min(1.0, max(0.0,
             (self.frequency_ramp_level * (ratio - 1.0) + speed) / ratio))
@@ -1015,7 +1284,7 @@ class VectorEngine:
 
     def _calculate_pulse_frequency(self, at_time: float, speed_percent: float,
                                    alpha: float) -> float:
-        active = ((at_time - self._last_input_time) <= self.volume_idle_seconds
+        active = (self._recently_driven(at_time)
                   and speed_percent > 0.5 and alpha > 1e-6)
         speed = min(1.0, max(0.0, speed_percent / 100.0))
         ratio = self.pulse_frequency_ratio
@@ -1046,8 +1315,7 @@ class VectorEngine:
 
     def _calculate_pulse_width(self, at_time: float, speed_percent: float,
                                output_l0: float) -> float:
-        active = ((at_time - self._last_input_time) <= self.volume_idle_seconds
-                  and speed_percent > 0.5)
+        active = self._recently_driven(at_time) and speed_percent > 0.5
         speed = min(1.0, max(0.0, speed_percent / 100.0))
         inverted_l0 = 1.0 - min(1.0, max(0.0, output_l0))
         ratio = self.pulse_width_ratio
@@ -1126,11 +1394,20 @@ class VectorEngine:
         ratio = min(40.0, self.volume_ramp_speed_ratio * self.prostate_volume_multiplier)
         speed = min(1.0, max(0.0, speed_percent / 100.0))
         generated = ((ratio - 1.0) + speed) / ratio
-        active = ((at_time - self._last_input_time) <= self.volume_idle_seconds
-                  and speed_percent > 0.5)
-        if not active:
-            generated *= self.prostate_rest_level
-        return self._volume_response(generated, 'prostate_volume')
+        active = self._recently_driven(at_time) and speed_percent > 0.5
+        if active:
+            # Prostate V0 has no return ramp: it is back to full at once.
+            self._prostate_was_active = True
+            self._prostate_factor = 1.0
+            return self._volume_response(generated, 'prostate_volume')
+        if self._prostate_was_active:
+            self._prostate_fall_since = at_time
+            self._prostate_fall_from = self._prostate_factor
+            self._prostate_was_active = False
+        self._prostate_factor = self._falling_factor(
+            at_time, self._prostate_fall_since, self._prostate_fall_from,
+            self.prostate_rest_level)
+        return self._volume_response(generated * self._prostate_factor, 'prostate_volume')
 
     def _loop(self) -> None:
         next_tick = self.clock()

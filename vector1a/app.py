@@ -8,7 +8,8 @@ import threading
 from collections import deque
 from tkinter import filedialog, messagebox, ttk
 
-from .engine import PRIMARY_PULSE_AXES, OutputSample, VectorEngine
+from .engine import ENVELOPE_MAX_TAU, PRIMARY_PULSE_AXES, OutputSample, VectorEngine
+from .envelope import COMPENSATION_MODES
 from .range_bar import RangeBar
 from .parameter_curves import (default_curves, validate_parameter_curves,
                                validate_parameter_profile, validated_parameter_profiles)
@@ -68,6 +69,41 @@ MAX_PULSE_DAMPING_SECONDS = {
     "pulse_rise": 10.0,
     "pulse_width": 30.0,
 }
+
+# Output envelopes (engine.configure_envelopes): app setting prefix -> engine axis.
+ENVELOPE_SETTING_AXES = (
+    ("volume", "V0"), ("frequency", "C0"), ("pulse_frequency", "P0"),
+    ("pulse_rise", "P3"), ("pulse_width", "P1"),
+)
+# Starting values from tools/envelope_eval.py (attack s, release s, jerk limit,
+# 0 = off).  Every axis is disabled until the user enables it.
+ENVELOPE_DEFAULTS = {
+    "volume": (0.10, 0.50, 100.0),
+    "frequency": (0.05, 0.25, 100.0),
+    "pulse_frequency": (0.01, 0.02, 0.0),
+    "pulse_rise": (0.10, 0.50, 100.0),
+    "pulse_width": (0.01, 0.02, 0.0),
+}
+ENVELOPE_DEFAULT_ADVANCE = "ma+attack"
+
+
+def envelope_status_text(enabled: bool, status: dict | None, *,
+                         replaces_pulse_timing: bool = False,
+                         howl_supplies_axis: bool = False) -> str:
+    """One-line readout for an axis envelope (status from engine.envelope_status())."""
+    if not enabled or status is None:
+        return "Envelope off"
+    if howl_supplies_axis:
+        # The composer replaces P0/P1 with Howl pulse after the envelope stage.
+        return "Envelope has no effect: Howl pulse supplies this axis"
+    window = status["window_samples"]
+    text = (f"Envelope on · advance {status['advance_seconds']:.2f} s · "
+            + (f"jerk window {window} samples" if window > 1 else "jerk limit off"))
+    if status["buffer_limited"]:
+        text += " · buffer limited: raise look-ahead"
+    if replaces_pulse_timing:
+        text += " · replaces pulse smoothing and timing for this axis"
+    return text
 
 
 class CollapsibleSection(ttk.Frame):
@@ -211,6 +247,8 @@ class VectorApp:
         "pulse_smoothing_seconds",
         *(f"{axis}_{suffix}" for axis in PRIMARY_PULSE_AXES
           for suffix in ("offset_ms", "phase_degrees")),
+        *(f"{name}_envelope_{suffix}" for name, _ in ENVELOPE_SETTING_AXES
+          for suffix in ("enabled", "attack", "release", "jerk", "advance")),
         "volume_response_min", "volume_response_max", "frequency_min", "frequency_max",
         "send_frequency", "send_pulse_frequency", "send_pulse_rise", "send_pulse_width",
         "howl_width", "howl_pan", "howl_boost", "howl_sigma", "howl_pulse", "howl_thump", "howl_freq_min", "howl_freq_max", "howl_balance_a", "howl_balance_b", "howl_scaling", "howl_position_strength", "match_spatial_intensity",
@@ -230,6 +268,7 @@ class VectorApp:
         "director_top_focus", "director_bottom_focus",
         "mfp_launch_target", "restim_launch_target", "prostate_launch_target",
         "rate", "lookahead", "volume", "dynamic_volume", "volume_rest_level", "volume_ratio",
+        "volume_idle_seconds", "stroke_reversal_window", "volume_fall_seconds",
         "volume_ramp_up", "frequency_ramp_level", "frequency_ratio", "send_frequency",
         "pulse_frequency_ratio", "pulse_frequency_min", "pulse_frequency_max", "send_pulse_frequency",
         "pulse_rise_ratio", "pulse_rise_min", "pulse_rise_max", "send_pulse_rise",
@@ -324,8 +363,20 @@ class VectorApp:
         for axis in PRIMARY_PULSE_AXES:
             setattr(self, f"{axis}_offset_ms", tk.DoubleVar(value=0.0))
             setattr(self, f"{axis}_phase_degrees", tk.DoubleVar(value=0.0))
+        for name, _ in ENVELOPE_SETTING_AXES:
+            attack, release, jerk = ENVELOPE_DEFAULTS[name]
+            setattr(self, f"{name}_envelope_enabled", tk.BooleanVar(value=False))
+            setattr(self, f"{name}_envelope_attack", tk.DoubleVar(value=attack))
+            setattr(self, f"{name}_envelope_release", tk.DoubleVar(value=release))
+            setattr(self, f"{name}_envelope_jerk", tk.DoubleVar(value=jerk))
+            setattr(self, f"{name}_envelope_advance",
+                    tk.StringVar(value=ENVELOPE_DEFAULT_ADVANCE))
+        self._envelope_status_vars: dict[str, tk.StringVar] = {}
         self.dynamic_volume = tk.BooleanVar(value=True)
         self.volume_rest_level = tk.DoubleVar(value=0.40)
+        self.volume_idle_seconds = tk.DoubleVar(value=0.25)
+        self.stroke_reversal_window = tk.DoubleVar(value=0.0)   # 0 = off
+        self.volume_fall_seconds = tk.DoubleVar(value=0.0)      # 0 = instant step
         self.volume_ratio = tk.DoubleVar(value=20.0)
         self.volume_ramp_up = tk.DoubleVar(value=1.0)
         self.frequency_ramp_level = tk.DoubleVar(value=1.0)
@@ -974,6 +1025,13 @@ class VectorApp:
         smoothing.bind("<FocusOut>", lambda event: self.apply_config())
         ttk.Label(motion, text="All four parameters · limited by look-ahead · 0 uses damping alone",
                   foreground="#555").grid(row=14, column=2, columnspan=4, sticky="w")
+        # Primary V0 envelope; C0/P0/P3/P1 have theirs in their own sections.
+        ttk.Label(motion, text="Primary V0 envelope").grid(row=15, column=0, sticky="w",
+                                                           pady=(4, 0))
+        self._build_envelope_controls(motion, 15, "volume", column=1, columnspan=5)
+        ttk.Label(motion, text=("Generated V0 before composed stages · release capped at 2 s · "
+                                "Stop, Neutral and pressure faults bypass it"),
+                  foreground="#555").grid(row=17, column=1, columnspan=5, sticky="w")
 
         volume_frame = self._frame("Volume response", 2, 0, 2)
         build_volume_response(self, volume_frame)
@@ -2374,6 +2432,53 @@ class VectorApp:
         ttk.Label(frame, textvariable=readout, foreground="#555").grid(
             row=row+1, column=1, columnspan=9, sticky="w")
         self._pulse_command_readouts.append(readout)
+        self._build_envelope_controls(frame, row + 2, axis)
+
+    def _build_envelope_controls(self, parent, row, name, *, column=1, columnspan=9) -> None:
+        """Envelope toggle, attack/release/jerk/advance and a status line (two grid rows)."""
+        cap = ENVELOPE_MAX_TAU[dict(ENVELOPE_SETTING_AXES)[name]]
+        box = ttk.Frame(parent)
+        box.grid(row=row, column=column, columnspan=columnspan, sticky="w", pady=(4, 0))
+        ttk.Checkbutton(box, text="Envelope", variable=getattr(self, f"{name}_envelope_enabled"),
+                        command=self.apply_config).pack(side="left", padx=(0, 8))
+        for label, suffix, high, step in (("Attack (s)", "attack", cap, .01),
+                                          ("Release (s)", "release", cap, .05),
+                                          ("Jerk limit /s³ (0 off)", "jerk", 100000, 10)):
+            ttk.Label(box, text=label).pack(side="left", padx=(0, 4))
+            spin = ttk.Spinbox(box, from_=0, to=high, increment=step, width=7,
+                               textvariable=getattr(self, f"{name}_envelope_{suffix}"),
+                               command=self.apply_config)
+            spin.pack(side="left", padx=(0, 10))
+            spin.bind("<Return>", lambda event: self.apply_config())
+        ttk.Label(box, text="Advance").pack(side="left", padx=(0, 4))
+        advance = ttk.Combobox(box, values=COMPENSATION_MODES, state="readonly", width=10,
+                               textvariable=getattr(self, f"{name}_envelope_advance"))
+        advance.pack(side="left")
+        advance.bind("<<ComboboxSelected>>", lambda event: self.apply_config())
+        status = tk.StringVar(value="Envelope off")
+        ttk.Label(parent, textvariable=status, foreground="#555").grid(
+            row=row + 1, column=column, columnspan=columnspan, sticky="w")
+        self._envelope_status_vars[name] = status
+
+    def _refresh_envelope_status(self) -> None:
+        statuses = self.engine.envelope_status()
+        smoothing = self.engine.pulse_smoothing_seconds > 0
+        config = self._output_config
+        # Same condition OutputComposer.compose uses to substitute Howl pulse.
+        howl_pulse = config.howl_pulse and config.four_phase_spatial_model.startswith("Howl ")
+        for name, axis in ENVELOPE_SETTING_AXES:
+            readout = self._envelope_status_vars.get(name)
+            if readout is None:
+                continue
+            replaces = False
+            if axis != "V0" and axis in statuses:
+                offset = getattr(self, f"{name}_offset_ms").get()
+                phase = getattr(self, f"{name}_phase_degrees").get()
+                replaces = smoothing or bool(offset) or bool(phase)
+            readout.set(envelope_status_text(
+                getattr(self, f"{name}_envelope_enabled").get(), statuses.get(axis),
+                replaces_pulse_timing=replaces,
+                howl_supplies_axis=howl_pulse and axis in ("P0", "P1")))
 
     def _apply_primary_pulse_timing(self) -> None:
         try:
@@ -2384,7 +2489,24 @@ class VectorApp:
             return  # A spinbox may temporarily contain incomplete text.
         self.engine.configure_primary_pulse_timing(settings)
 
-    def apply_config(self) -> None:
+    def _envelope_settings(self) -> dict:
+        """Engine envelope settings from the Tk variables; None = axis off."""
+        settings = {}
+        for name, axis in ENVELOPE_SETTING_AXES:
+            if not getattr(self, f"{name}_envelope_enabled").get():
+                settings[axis] = None
+                continue
+            jerk = getattr(self, f"{name}_envelope_jerk").get()
+            settings[axis] = {
+                "tau_attack": getattr(self, f"{name}_envelope_attack").get(),
+                "tau_release": getattr(self, f"{name}_envelope_release").get(),
+                "jerk_limit": jerk if jerk else None,
+                "compensation": getattr(self, f"{name}_envelope_advance").get(),
+            }
+        return settings
+
+    def apply_config(self) -> bool:
+        """Push settings to the engine; return False if validation failed."""
         self._publish_output_config()
         try:
             self._apply_primary_pulse_timing()
@@ -2434,7 +2556,11 @@ class VectorApp:
                                   spatial_curve=self.four_phase_spatial_curve.get(),
                                   spatial_blend=self.four_phase_spatial_blend.get(),
                                   parameter_curves=self._parameter_curves,
-                                  pulse_smoothing_seconds=self.pulse_smoothing_seconds.get())
+                                  pulse_smoothing_seconds=self.pulse_smoothing_seconds.get(),
+                                  volume_idle_seconds=self.volume_idle_seconds.get(),
+                                  stroke_reversal_window=self.stroke_reversal_window.get(),
+                                  volume_fall_seconds=self.volume_fall_seconds.get())
+            self.engine.configure_envelopes(self._envelope_settings())
             self.engine.configure_modifier(
                 enabled=self.modifier_enabled.get(),
                 stroke_range=self.modifier_stroke_range.get(),
@@ -2444,6 +2570,8 @@ class VectorApp:
             self._update_modifier_status()
         except (tk.TclError, ValueError) as exc:
             messagebox.showerror("Invalid settings", str(exc))
+            return False
+        return True
 
     def _on_top_focus_changed(self, *_args) -> None:
         if hasattr(self, "_top_focus_history"):
@@ -3991,6 +4119,8 @@ class VectorApp:
         self.output_composer.reset_motion_direction()
         with self._input_lock:
             self.engine.neutral()
+            # Reject live frames calculated before Neutral, as stop() does.
+            self._input_epoch = time.monotonic()
             self.output_composer.reset_pulse_damping()
         neutral_volume = self.volume.get()
         with self._outgoing_volume_lock:
@@ -4013,7 +4143,8 @@ class VectorApp:
         self.pressure_control.target()
         if self.pressure_control.fault:
             return
-        self.apply_config()
+        if not self.apply_config():
+            return  # Never start output on settings the user was told are invalid.
         self._reset_four_phase_group_delay()
         with self._input_lock:
             self.output_composer.reset_pulse_damping()
@@ -4150,10 +4281,12 @@ class VectorApp:
              self.send_pulse_width, config.pulse_width_damping),
         )
         smoothing = self.engine.pulse_smoothing_seconds > 0
+        envelopes = self.engine.envelope_status()
         for index, (bar, target_readout, target, enabled_var, damping) in enumerate(axes):
             enabled = enabled_var.get()
             command = pulse[index] if enabled and pulse is not None else None
-            show_composed = damping > 0 or smoothing
+            show_composed = (damping > 0 or smoothing
+                             or ENVELOPE_SETTING_AXES[index + 1][1] in envelopes)
             bar.set_live_value(target, command if show_composed else None)
             target_readout.set(f"{target:.4f}")
             readout = self._pulse_command_readouts[index]
@@ -4168,6 +4301,7 @@ class VectorApp:
                     status = "Howl pulse supplies this axis"
                 text += f"   |   {status}"
             readout.set(text)
+        self._refresh_envelope_status()
         if outgoing is not None:
             self.outgoing_volume_value.set(
                 f"Composed V0 (before pressure): Primary {outgoing[0]:.4f} ({outgoing[0]*100:.1f}%)   |   "

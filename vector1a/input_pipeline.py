@@ -13,6 +13,7 @@ class TempoController:
         self._tempo_transition_seconds_active = 0.2
         self._tempo_restore_started_at = 0.0
         self._tempo_restore_from = None
+        self._tempo_last_warped = None
 
     @property
     def scale(self) -> float:
@@ -29,6 +30,7 @@ class TempoController:
             self._tempo_transition_seconds_active = min(5.0, max(0.0, float(transition)))
             self._tempo_restore_started_at = 0.0
             self._tempo_restore_from = None
+            self._tempo_last_warped = None
 
     def restore(self, now: float) -> None:
         raw_pos = self.timeline.position_seconds()
@@ -40,6 +42,7 @@ class TempoController:
             self._tempo_anchor_media = None
             self._tempo_expires_at = 0.0
             self._tempo_restore_started_at = now
+            self._tempo_last_warped = None
 
 
     def transform(self, raw_value: float, now: float) -> float:
@@ -52,13 +55,18 @@ class TempoController:
             transition = self._tempo_transition_seconds_active
             restore_started = self._tempo_restore_started_at
             restore_from = self._tempo_restore_from
+            last_warped = self._tempo_last_warped
 
         if scale != 1.0 and anchor_media is not None:
             media_pos = self.timeline.position_seconds()
+            warped = None
             if media_pos is not None:
                 virtual_seconds = anchor_media + (float(media_pos) - anchor_media) * scale
                 warped = self.timeline.sample_position(virtual_seconds)
-                if warped is not None:
+            if warped is None:
+                # A momentary media-clock gap must not snap output to raw L0.
+                warped = last_warped
+            if warped is not None:
                     if expires and now >= expires:
                         with self._tempo_lock:
                             self._tempo_scale_active = 1.0
@@ -66,9 +74,12 @@ class TempoController:
                             self._tempo_expires_at = 0.0
                             self._tempo_restore_started_at = now
                             self._tempo_restore_from = float(warped)
+                            self._tempo_last_warped = None
                         restore_started = now
                         restore_from = float(warped)
                     else:
+                        with self._tempo_lock:
+                            self._tempo_last_warped = float(warped)
                         if transition <= 1e-9:
                             return float(warped)
                         blend = min(1.0, max(0.0, (now - anchor_clock) / transition))

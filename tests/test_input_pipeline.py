@@ -14,6 +14,31 @@ class TempoTests(unittest.TestCase):
   for scenario in expected:
    with self.subTest(scenario=scenario):self.assertEqual(actual[scenario],expected[scenario])
 
+ def _tempo_with_gap(self, gap):
+  from tempo_scenarios import Timeline
+  timeline=Timeline();ctl=TempoController(timeline)
+  ctl.start(2.,4.,10.,1.,.2)
+  timeline.position=4.2
+  warped=ctl.transform(.5,10.2)  # Fully blended: warped script time 4.4.
+  gap(timeline)
+  return timeline,ctl,warped
+
+ def test_missing_media_position_holds_warped_value_instead_of_raw(self):
+  for name,gap in (('position',lambda t:setattr(t,'position',None)),
+                   ('sample',lambda t:setattr(t,'missing_sample',True))):
+   with self.subTest(missing=name):
+    _,ctl,warped=self._tempo_with_gap(gap)
+    self.assertAlmostEqual(warped,.4)
+    self.assertAlmostEqual(ctl.transform(.9,10.3),warped)
+    self.assertAlmostEqual(ctl.transform(.1,10.5),warped)
+
+ def test_tempo_expiring_during_gap_restores_smoothly_from_held_value(self):
+  _,ctl,warped=self._tempo_with_gap(lambda t:setattr(t,'position',None))
+  self.assertAlmostEqual(ctl.transform(.9,11.),warped)  # Restore starts here.
+  self.assertEqual(ctl.scale,1.)
+  self.assertAlmostEqual(ctl.transform(.9,11.1),warped+(.9-warped)*.5)
+  self.assertEqual(ctl.transform(.9,11.25),.9)
+
 class InputTests(unittest.TestCase):
  def pipeline(self,active=False):
   order=[]
