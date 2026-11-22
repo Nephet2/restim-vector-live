@@ -120,7 +120,8 @@ class CeilingSequenceTests(unittest.TestCase):
         result=fixture.request('sequence',body)
         self.assertEqual(result.status,200)
         self.assertEqual(result.response['passage']['plan']['baseline'],.85)
-        self.assertEqual(result.response['passage']['nominal_ceiling'],.85)
+        # Derived through the passage plan, so allow float rounding (~1e-13).
+        self.assertAlmostEqual(result.response['passage']['nominal_ceiling'],.85,places=9)
 
     def test_motion_mode_api_leaves_queue_and_volume_settings_unchanged(self):
         from types import SimpleNamespace
