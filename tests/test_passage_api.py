@@ -44,7 +44,9 @@ class PassageAPITests(unittest.TestCase):
         handler.headers = {'Content-Length': '2'}
         handler.rfile = BytesIO(b'{}')
         handler.server = SimpleNamespace(bridge=SimpleNamespace(
-            submit=lambda method, path, body: (lambda r: (r.status, r.response))(self.request(path.rsplit('/',1)[-1], body))))
+            # The handler passes a timeout (DirectorBridge.submit accepts one).
+            submit=lambda method, path, body, timeout=None:
+                (lambda r: (r.status, r.response))(self.request(path.rsplit('/',1)[-1], body))))
         replies = []
         handler._send = lambda status, payload: replies.append((status, payload))
         handler.do_POST()
