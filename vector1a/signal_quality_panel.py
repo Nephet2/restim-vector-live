@@ -46,13 +46,16 @@ def trace_segments(history, axes, cutoff):
 
 
 class SignalQualityPanel:
-    def __init__(self, panel, primary, prostate):
+    def __init__(self, panel, primary, prostate, popout=None):
         self.clients = {"Primary": primary, "Prostate": prostate}
         self.last_refresh = -float("inf")
         toolbar = ttk.Frame(panel)
         toolbar.pack(fill="x", pady=(0, 5))
         self.endpoint = self._selector(toolbar, "Output", tuple(self.clients), 11)
         self.span = self._selector(toolbar, "Window", ("10 s", "5 s", "30 s"), 6)
+        if popout is not None:
+            # Opens this view in its own movable window (see DiagnosticsPanel).
+            ttk.Button(toolbar, text="Pop out", command=popout).pack(side="right")
         axes_frame = ttk.LabelFrame(panel, text="Axes", padding=(5, 2))
         axes_frame.pack(fill="x", pady=(0, 5))
         self.axis_selected = {}
@@ -93,6 +96,13 @@ class SignalQualityPanel:
         self.stats.pack(side="left", fill="x", expand=True)
         ttk.Label(panel, text="Successful socket writes · T-code scale 0–100 · Gaps show missing writes or axes",
                   foreground="#555", wraplength=640).pack(anchor="w", pady=(5, 0))
+
+    def copy_selections_from(self, other):
+        """Start with another panel's output, time window and axes."""
+        self.endpoint.set(other.endpoint.get())
+        self.span.set(other.span.get())
+        for axis, selected in self.axis_selected.items():
+            selected.set(other.axis_selected[axis].get())
 
     def _selector(self, frame, label, choices, width):
         ttk.Label(frame, text=label).pack(side="left", padx=(0, 4))

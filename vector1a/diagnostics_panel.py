@@ -27,7 +27,13 @@ class DiagnosticsPanel:
         self.notebook.add(self.samples,text='Calculated samples')
         quality = ttk.Frame(self.notebook, padding=8)
         self.notebook.add(quality, text='Signal Quality')
-        self.signal_quality = SignalQualityPanel(quality, app.restim, app.prostate_restim)
+        self.signal_quality = SignalQualityPanel(quality, app.restim, app.prostate_restim,
+                                                 popout=self.open_popout)
+        # Optional separate Signal Quality window, kept visible while adjusting
+        # settings elsewhere in the main window.
+        self.popout_window = None
+        self.popout_panel = None
+        self.popout_on_top = tk.BooleanVar(value=False)
         for col in (0,1):self.overview.columnconfigure(col,weight=1,uniform='stages')
         self.stage_vars={name:tk.StringVar(value='Waiting for refresh') for name in ('source','primary','prostate','primary_address','prostate_address')}
         def card(title,row,col):
@@ -74,8 +80,52 @@ class DiagnosticsPanel:
         ttk.Label(self.samples,text='Generated samples precede final composition. Authored axes, Howl pulse overrides, focus and events can change outgoing values.',
                   wraplength=820,justify='left',foreground='#555').grid(row=9,column=0,columnspan=4,sticky='w',pady=8)
 
+    def open_popout(self):
+        """Show Signal Quality in its own window; a second press raises it."""
+        window = self.popout_window
+        if window is not None and window.winfo_exists():
+            window.deiconify()
+            window.lift()
+            window.focus_set()
+            return
+        window = tk.Toplevel(self.app.root)
+        window.title('Signal Quality — Vector')
+        window.geometry('760x560')
+        window.minsize(520, 420)
+        window.resizable(True, True)
+        window.protocol('WM_DELETE_WINDOW', self.close_popout)
+        body = ttk.Frame(window, padding=8)
+        body.pack(fill='both', expand=True)
+        ttk.Checkbutton(body, text='Keep on top', variable=self.popout_on_top,
+                        command=self.apply_popout_on_top).pack(anchor='e')
+        self.popout_window = window
+        self.popout_panel = SignalQualityPanel(body, self.app.restim, self.app.prostate_restim)
+        self.popout_panel.copy_selections_from(self.signal_quality)
+        self.apply_popout_on_top()
+        window.update_idletasks()
+        self.popout_panel.refresh(force=True)
+
+    def apply_popout_on_top(self):
+        window = self.popout_window
+        if window is not None and window.winfo_exists():
+            window.attributes('-topmost', bool(self.popout_on_top.get()))
+
+    def close_popout(self):
+        window = self.popout_window
+        self.popout_window = self.popout_panel = None
+        if window is not None:
+            try:
+                window.destroy()
+            except tk.TclError:
+                pass
+
     def refresh(self):
         self.signal_quality.refresh()
+        if self.popout_panel is not None:
+            if self.popout_window is not None and self.popout_window.winfo_exists():
+                self.popout_panel.refresh()
+            else:
+                self.popout_window = self.popout_panel = None
         app=self.app;source=app.listener.health()
         fresh=source['last_l0_age']
         incoming='No MFP L0 received' if fresh is None else f"Last MFP L0: {age(fresh)}; authored position: {app.input_pipeline.latest_authored_l0:.4f}"
