@@ -320,12 +320,16 @@ class OutputComposer:
                                    * 2.0 * math.pi / cycle)) / 2.0
             ceiling = min(1.0, ceiling +
                           config.four_phase_volume_headroom * wave * variation_depth)
+        # Undo the Base volume this sample was calculated with, not the current
+        # one: queued samples outlive a Base volume change.
+        volume_scale = (sample.volume_scale if sample.volume_scale is not None
+                        else config.volume)
         primary_volume = min(1.0, max(0.0,
-            ceiling * sample.volume / max(config.volume, 1e-9)))
+            ceiling * sample.volume / max(volume_scale, 1e-9)))
         if match_intensity or howl_mode:
             intensity = (self._howl_frame.matched_volume if match_intensity
                          else self._howl_frame.volume)
-            response = sample.volume / max(config.volume, 1e-9)
+            response = sample.volume / max(volume_scale, 1e-9)
             rest_response = self.engine.volume_rest_response()
             primary_volume = (ceiling * match_volume_response(response, intensity, rest_response)
                               if sample.volume > 0 else 0.0)
@@ -373,7 +377,12 @@ class OutputComposer:
             sample.alpha_prostate,
             self._bottom_focus_transition.window(now=sample.due_at),
             strength=config.bottom_focus_strength)
-        bottom_volume = apply_gain(sample.volume_prostate, bottom_gain)
+        prostate_volume = sample.volume_prostate
+        if volume_scale > 0.0 and config.volume != volume_scale:
+            # Prostate is its response x Base volume: apply the current Base volume.
+            prostate_volume = min(1.0, max(0.0,
+                prostate_volume * config.volume / volume_scale))
+        bottom_volume = apply_gain(prostate_volume, bottom_gain)
         primary_alpha = sample.alpha
         primary_beta = sample.beta
         primary_frequency, primary_pulse_frequency, primary_pulse_rise, primary_pulse_width = (
@@ -427,6 +436,11 @@ class OutputComposer:
             if authored_overrides and "V0" in authored_overrides:
                 authored_overrides = dict(authored_overrides)
                 authored_overrides["V0"] = min(1.0, authored_overrides["V0"] * primary_factor)
+        if config.volume <= 0.0:
+            # Zero Base volume mutes both generated outputs.  Queued samples were
+            # scaled by the earlier Base volume, and dividing them by zero above
+            # would clamp Primary to 100%.  Authored V0 overrides keep ownership.
+            primary_volume = bottom_volume = 0.0
         outgoing_volumes = (
             authored_overrides.get("V0", primary_volume) if authored_overrides else primary_volume,
             bottom_volume)
