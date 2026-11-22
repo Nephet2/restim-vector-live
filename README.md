@@ -1,12 +1,12 @@
-# Vector 1A 1.6.0-alpha90
+# Vector 1A 1.6.0-alpha91
 
 A clearer interface with fixed Start/Neutral/Stop controls, section shortcuts, model-specific spatial controls, compact response controls and connection diagnostics. Semantic profiles offer temporary authored-tempo choices of **0.5x, 1x and 2x**. The Windows source download includes Civet Bluetooth dependencies.
 
-See [v90 release notes](RELEASE_NOTES_1.6.0-alpha90.md) and [architecture overview](docs/ARCHITECTURE.md).
+See [v91 release notes](RELEASE_NOTES_1.6.0-alpha91.md) and [architecture overview](docs/ARCHITECTURE.md).
 
 # Vector 1A
 
-**v90 Windows source release:** extract the complete `source-windows.zip` and run `start-vector1a.bat`. Use **Python 3.13 x64** for bundled Pillow and Bluetooth components. This is a source release. A developer checkout or another Python version needs dependencies installed in its own environment (`.[preview]`).
+**v91 Windows source release:** extract the complete `source-windows.zip` and run `start-vector1a.bat`. Use **Python 3.13 x64** for bundled Pillow and Bluetooth components. This is a source release. A developer checkout or another Python version needs dependencies installed in its own environment (`.[preview]`).
 
 Close Vector before copying your previous `profile/Vector1A/settings.json` beside the new launcher. Public defaults remain Primary port 12346 and Prostate 12350; each ReStim instance needs its own port. Intensity matching and speed-linked optional effects remain off for new profiles; saved choices are retained.
 
@@ -19,7 +19,7 @@ ordinary positional `L0` stream, Vector remains the deterministic motion generat
 MFP supplies a clearly authored ReStim axis set, Vector can automatically pass those axes
 through on the same delayed timeline and generate only the missing axes.
 
-Current development build: **1.6.0-alpha90**.
+Current development build: **1.6.0-alpha91**.
 
 See [Alpha79 release notes](RELEASE_NOTES_1.6.0-alpha79.md) for Howl conversion,
 intensity matching, optional TCode output, automatic ready startup and Civet pressure controls.
