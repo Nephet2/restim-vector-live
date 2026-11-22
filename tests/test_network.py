@@ -4,12 +4,33 @@ import socket
 import threading
 import time
 import unittest
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 from vector1a.engine import VectorEngine
 from vector1a.network import LatestFrameDispatcher, MFPListener, ReStimWebSocketClient
 
 
 class NetworkTests(unittest.TestCase):
+    def test_tcode_history_copies_completed_payloads_only(self):
+        client = ReStimWebSocketClient(lambda _: None)
+        self.addCleanup(client.close)
+        client._socket = Mock()
+        client._frame = lambda message: message
+        client._needs_neutral = True
+        client.suppressed_axes = {"P0"}
+        client.pressure_control = SimpleNamespace(
+            enabled=True, tcode=lambda message: message.replace("V05000", "V02500"))
+        self.assertTrue(client._send_message("V05000 P07000 P12500", "V00000"))
+        written = [call.args[0] for call in client._socket.sendall.call_args_list]
+        self.assertEqual(written, ["V00000", "V02500 P12500"])
+        history = client.tcode_history()
+        self.assertEqual([message for _, message in history], written)
+        history.clear()
+        client._socket.sendall.side_effect = OSError("write failed")
+        self.assertFalse(client._send_message("V07000", "V00000"))
+        self.assertEqual([message for _, message in client.tcode_history()], written)
+
     def test_blocked_restim_lane_cannot_starve_vector_engine(self):
         entered = threading.Event()
         release = threading.Event()
@@ -112,7 +133,7 @@ class NetworkTests(unittest.TestCase):
         client = ReStimWebSocketClient(lambda _: None); client.connect("127.0.0.1", port)
         client.send_prostate(.1, .2, .3, .4, .5, .6, .7)
         time.sleep(.05); client.disconnect()
-        self.assertIn("L01000 L12000 V03000 F04000 P05000 P16000 P37000", received)
+        self.assertIn("L01000 L12000 V03000 C04000 P05000 P16000 P37000", received)
 
     def test_listener_accepts_a_new_tcp_client_after_disconnect(self):
         values = []
@@ -230,6 +251,7 @@ class NetworkTests(unittest.TestCase):
         server = socket.socket(); server.bind(("127.0.0.1", 0)); server.listen(2)
         port = server.getsockname()[1]
         reconnected = threading.Event()
+        client_recovered = threading.Event()
 
         def handshake(conn):
             request = b""
@@ -248,10 +270,16 @@ class NetworkTests(unittest.TestCase):
             reconnected.wait(1.0); second.close(); server.close()
 
         threading.Thread(target=serve, daemon=True).start()
-        client = ReStimWebSocketClient(lambda _: None)
+        def status(text):
+            if text.startswith("Reconnect succeeded"):
+                client_recovered.set()
+        client = ReStimWebSocketClient(status)
         try:
             client.connect("127.0.0.1", port)
             self.assertTrue(reconnected.wait(3.0))
+            # Server send completion precedes client handshake completion.
+            # Health reads intentionally do not wait on the socket lock now.
+            self.assertTrue(client_recovered.wait(3.0))
             health = client.health()
             self.assertGreaterEqual(health["reconnect_attempts"], 1)
             self.assertGreaterEqual(health["reconnect_successes"], 1)
@@ -273,3 +301,4 @@ def test_mfp_listener_records_raw_packet_and_all_axes():
     assert packet["transport"] == "UDP"
     assert packet["axes"] == ["L0", "L1", "V0", "C0"]
     assert packet["raw"] == "L05000L17500V02500 C09000"
+

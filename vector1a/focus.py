@@ -81,18 +81,72 @@ def bottom_focus_window(label: str) -> tuple[float, float]:
     return _BOTTOM_WINDOWS.get(label, _BOTTOM_WINDOWS["Bottom Full"])
 
 
+def apply_bottom_focus_window(alpha: float, window: tuple[float, float], *,
+                              strength: float = 1.0) -> float:
+    """Remap secondary Alpha through an explicit, potentially interpolated window."""
+    alpha = clamp01(alpha)
+    strength = clamp01(strength)
+    low, high = (clamp01(window[0]), clamp01(window[1]))
+    if high < low:
+        low, high = high, low
+    low *= strength
+    high = 1.0 + (high - 1.0) * strength
+    return clamp01(low + alpha * (high - low))
+
+
 def apply_bottom_focus(alpha: float, label: str, *, strength: float = 1.0) -> float:
     """Remap secondary Alpha into a focus window.
 
     At strength 1, Prostate Focus maps ordinary 0..1 Alpha into 0.5..1.0.
     At strength 0, the original 0..1 excursion is retained.
     """
-    alpha = clamp01(alpha)
-    strength = clamp01(strength)
-    low, high = bottom_focus_window(label)
-    low *= strength
-    high = 1.0 + (high - 1.0) * strength
-    return clamp01(low + alpha * (high - low))
+    return apply_bottom_focus_window(alpha, bottom_focus_window(label), strength=strength)
+
+
+class BottomFocusTransition:
+    """Continuously interpolate the secondary Alpha window when focus changes."""
+
+    def __init__(self, label: str, *, now: float | None = None) -> None:
+        t = time.monotonic() if now is None else float(now)
+        window = bottom_focus_window(label)
+        self.label = str(label)
+        self._start = window
+        self._target = window
+        self._started_at = t
+        self._duration = 0.0
+
+    def window(self, *, now: float | None = None) -> tuple[float, float]:
+        t = time.monotonic() if now is None else float(now)
+        if self._duration <= 1e-9:
+            return self._target
+        progress = clamp01((t - self._started_at) / self._duration)
+        eased = progress * progress * (3.0 - 2.0 * progress)
+        return (
+            self._start[0] + (self._target[0] - self._start[0]) * eased,
+            self._start[1] + (self._target[1] - self._start[1]) * eased,
+        )
+
+    def select(self, label: str, *, duration: float = 1.0,
+               now: float | None = None) -> None:
+        label = str(label)
+        t = time.monotonic() if now is None else float(now)
+        target = bottom_focus_window(label)
+        if label == self.label and target == self._target:
+            return
+        self._start = self.window(now=t)
+        self._target = target
+        self._started_at = t
+        self._duration = max(0.0, float(duration))
+        self.label = label
+
+    def snapshot(self, *, now: float | None = None) -> dict:
+        effective = self.window(now=now)
+        return {
+            "target": [round(value, 4) for value in self._target],
+            "effective": [round(value, 4) for value in effective],
+            "transitioning": any(abs(a - b) > 1e-4 for a, b in zip(effective, self._target)),
+            "duration_seconds": round(self._duration, 3),
+        }
 
 
 class FocusHistory:

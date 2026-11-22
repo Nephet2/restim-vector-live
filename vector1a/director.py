@@ -15,6 +15,7 @@ class DirectorRequest:
     path: str
     body: dict[str, Any]
     completed: threading.Event = field(default_factory=threading.Event)
+    expired: threading.Event = field(default_factory=threading.Event)
     status: int = 500
     response: dict[str, Any] = field(default_factory=lambda: {"ok": False, "error": "not processed"})
 
@@ -30,6 +31,7 @@ class DirectorBridge:
         request = DirectorRequest(method=method, path=path, body=body)
         self._requests.put(request)
         if not request.completed.wait(timeout):
+            request.expired.set()
             return 503, {"ok": False, "error": "Vector UI did not answer in time"}
         return request.status, request.response
 
@@ -93,7 +95,7 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         path = urlparse(self.path).path
-        if path not in ("/v1/state", "/v1/capabilities", "/v1/controller"):
+        if path not in ("/v1/state", "/v1/capabilities", "/v1/controller", "/v1/vacuglide"):
             self._send(404, {"ok": False, "error": "not found"})
             return
         status, payload = self.server.bridge.submit("GET", path, {})  # type: ignore[attr-defined]
@@ -102,22 +104,30 @@ class _Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         path = urlparse(self.path).path
         if path not in (
-                "/v1/preset", "/v1/rolling-variety", "/v1/neutral", "/v1/stop", "/v1/resume",
+                "/v1/vacuglide", "/v1/preset", "/v1/rolling-variety", "/v1/neutral", "/v1/stop", "/v1/resume",
                 "/v1/semantic/texture", "/v1/semantic/primary-spatial",
                 "/v1/semantic/secondary-spatial", "/v1/semantic/variation",
-                "/v1/semantic/top-focus", "/v1/semantic/bottom-focus",
+                "/v1/semantic/top-focus", "/v1/semantic/bottom-focus", "/v1/semantic/tempo",
                 "/v1/spatial-gain/top", "/v1/spatial-gain/bottom",
+                "/v1/motion-mode", "/v1/passage/sequence", "/v1/passage/sequence-preview",
+                "/v1/passage/plan", "/v1/passage/preview", "/v1/passage/hold",
+                "/v1/passage/resume", "/v1/passage/restore",
                 "/v1/generated-motion/plan", "/v1/generated-motion/hold",
                 "/v1/generated-motion/resume", "/v1/generated-motion/authored",
+                "/v1/event/trigger", "/v1/event/cancel",
                 "/v1/modifier/target", "/v1/modifier/stroke-range", "/v1/modifier/tempo", "/v1/modifier/restore"):
             self._send(404, {"ok": False, "error": "not found"})
+            return
+        if path == "/v1/vacuglide" and (
+                self.headers.get_content_type() != "application/json" or self.headers.get("Origin")):
+            self._send(403, {"ok": False, "error": "VacuGlide requires a native local JSON client"})
             return
         try:
             body = self._body()
         except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             self._send(400, {"ok": False, "error": str(exc)})
             return
-        status, payload = self.server.bridge.submit("POST", path, body)  # type: ignore[attr-defined]
+        status, payload = self.server.bridge.submit("POST", path, body, timeout=22 if path == "/v1/vacuglide" else 2)  # type: ignore[attr-defined]
         self._send(status, payload)
 
 

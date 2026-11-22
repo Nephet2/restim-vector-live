@@ -15,6 +15,19 @@ class TCodeTests(unittest.TestCase):
 
 
 class MotionTests(unittest.TestCase):
+    def test_original_motion_survives_mixed_stroke_cache_rollover(self):
+        calc = MotionCalculator(seed=1)
+        params = MotionParameters(direction_change_probability=0.5)
+        for sequence in range(1200):
+            # Live calculation uses high provisional IDs; look-ahead rewriting
+            # subsequently revisits the completed stroke with its smaller ID.
+            for key in (1_000_000_000 + sequence, sequence):
+                stroke = SegmentState(key, 0.0, 1.0, 0.0, 1.0)
+                first = calc.calculate(MotionMode.RESTIM_ORIGINAL, stroke, 0.5, params)
+                repeated = calc.calculate(MotionMode.RESTIM_ORIGINAL, stroke, 0.5, params)
+                self.assertEqual(first, repeated)
+                self.assertLessEqual(len(calc._segment_directions), 512)
+
     def setUp(self):
         self.segment = SegmentState(1, 10.0, 11.0, 0.0, 1.0)
         self.params = MotionParameters(0.1, 50.0, 0.0)
@@ -275,16 +288,21 @@ class QueueTests(unittest.TestCase):
         combined = ((1.0 - 0.6) + (1.0 - 0.75)) / 2.0
         self.assertAlmostEqual(engine._calculate_pulse_rise_time(75.0), combined * 0.8)
 
-    def test_pulse_width_limits_inverted_l0_then_blends_speed(self):
+    def test_pulse_width_blends_speed_and_inverted_l0_then_scales_range(self):
         engine = VectorEngine(lambda sample: None, clock=lambda: 0.0)
         engine.pulse_width_ratio = 3.0
         engine.pulse_width_min = 0.1
         engine.pulse_width_max = 0.45
         engine.volume_ramp_up_seconds = 0.0
         engine._last_input_time = 1.0
-        # inverted L0=.8, limited to .45
-        expected = 0.45  # raw blend is .55, hard-clamped to configured maximum
+        drive = (0.60 * 2 + 0.80) / 3
+        expected = 0.10 + drive * (0.45 - 0.10)
         self.assertAlmostEqual(engine._calculate_pulse_width(1.0, 60.0, 0.2), expected)
+        engine.pulse_width_max = 0.30
+        self.assertAlmostEqual(engine._calculate_pulse_width(1.0, 60.0, 0.2),
+                               0.10 + drive * (0.30 - 0.10))
+        self.assertLess(engine._calculate_pulse_width(1.0, 60.0, 0.2),
+                        engine._calculate_pulse_width(1.0, 80.0, 0.2))
 
     def test_pulse_width_never_leaves_controller_range(self):
         engine = VectorEngine(lambda sample: None, clock=lambda: 0.0)
@@ -365,6 +383,27 @@ class QueueTests(unittest.TestCase):
             alpha = [point[0] for point in points]
             self.assertAlmostEqual(min(alpha), 0.0)
             self.assertAlmostEqual(max(alpha), 1.0)
+
+    def test_known_generated_bounds_keep_prostate_path_smooth_through_reversals(self):
+        sent = []
+        now = [0.0]
+        engine = VectorEngine(sent.append, rate_hz=50, lookahead_seconds=1.0,
+                              clock=lambda: now[0])
+        engine.resume()
+        dt = 1.0 / 50.0
+        for index in range(1, 601):
+            at = index * dt
+            phase = at / 4.8
+            value = 0.35 + 0.50 * (1.0 - math.cos(2.0 * math.pi * phase)) * 0.5
+            now[0] = at
+            engine.receive_l0(value, 20, at, stroke_bounds=(0.35, 0.85))
+            engine.step(at, release_at=at)
+        now[0] = 14.0
+        engine._release_due(now[0])
+        jumps = [max(abs(current.alpha_prostate - previous.alpha_prostate),
+                     abs(current.beta_prostate - previous.beta_prostate))
+                 for previous, current in zip(sent, sent[1:])]
+        self.assertLess(max(jumps), 0.01)
 
     def test_prostate_volume_uses_rfp_multiplier_and_rest_level(self):
         engine = VectorEngine(lambda sample: None, volume=0.7, clock=lambda: 0.0)

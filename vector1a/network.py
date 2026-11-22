@@ -9,6 +9,7 @@ import struct
 import threading
 import time
 from collections import deque
+from contextlib import contextmanager
 from typing import Callable
 
 from .tcode import format_command, parse_message
@@ -28,13 +29,17 @@ class MFPListener:
         self._last_received: float | None = None
         self._last_transport = ""
         self._transport_live = {"tcp": False, "udp": False}
+        self._transport_errors = {}
         self._raw_lock = threading.Lock()
         self._raw_packets = deque(maxlen=80)
+        self._client_lock = threading.RLock()
+        self._active_client = None
 
     def start(self, host: str, port: int) -> None:
         self.stop()
         self._last_received = None
         self._last_transport = ""
+        self._transport_errors.clear()
         self._run.set()
         for transport in ("tcp", "udp"):
             thread = threading.Thread(target=self._supervise, args=(transport, host, port),
@@ -48,6 +53,8 @@ class MFPListener:
         with self._socket_lock:
             sockets, self._sockets = self._sockets, []
         for sock in sockets:
+            try: sock.shutdown(socket.SHUT_RDWR)
+            except OSError: pass
             try: sock.close()
             except OSError: pass
         for thread in self._threads:
@@ -59,10 +66,17 @@ class MFPListener:
     def connection_label(self) -> str:
         if not self._run.is_set():
             return "Disconnected"
+        errors = tuple(self._transport_errors)
+        unavailable = ", ".join(name.upper() for name in errors)
         if self._last_received is None:
-            return "Listening"
-        age = time.monotonic() - self._last_received
-        return f"Receiving ({self._last_transport})" if age < 2.0 else f"Listening; no L0 for {age:.1f} s"
+            label = "Listening"
+        else:
+            age = time.monotonic() - self._last_received
+            label = (f"Receiving ({self._last_transport})" if age < 2.0
+                     else f"Listening; no L0 for {age:.1f} s")
+        if unavailable:
+            label += f"; {unavailable} recovering (see Connection log)"
+        return label
 
     def health(self) -> dict[str, object]:
         """Return read-only listener health without treating a quiet script as failure."""
@@ -85,8 +99,9 @@ class MFPListener:
         while self._run.is_set():
             try:
                 (self._tcp_session if transport == "tcp" else self._udp_session)(host, port)
-            except OSError as exc:
+            except Exception as exc:
                 if self._run.is_set():
+                    self._transport_errors[transport] = str(exc)
                     self.status(f"MFP {transport.upper()} recovering: {exc}")
             finally:
                 self._transport_live[transport] = False
@@ -122,21 +137,45 @@ class MFPListener:
             server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             server.bind((host, port)); server.listen(4); server.settimeout(0.5)
             self._transport_live["tcp"] = True
+            self._transport_errors.pop("tcp", None)
             while self._run.is_set():
                 try: client, _ = server.accept()
                 except socket.timeout: continue
                 self._track(client, True)
                 client.settimeout(0.5)
-                try:
-                    self._stream_client(client)
-                except (OSError, EOFError) as exc:
-                    if self._run.is_set() and isinstance(exc, OSError):
-                        self.status("MFP stream disconnected; listening for reconnection")
-                finally:
-                    self._track(client, False)
-                    client.close()
+                with self._client_lock:
+                    previous = self._active_client
+                    self._active_client = client
+                    if previous is not None:
+                        try: previous.shutdown(socket.SHUT_RDWR)
+                        except OSError: pass
+                        previous.close()
+                        self.status("MFP replacement stream accepted")
+                threading.Thread(target=self._serve_client, args=(client,),
+                                 name="mfp-stream", daemon=True).start()
         finally:
             self._track(server, False); server.close()
+
+    def _serve_client(self, client: socket.socket) -> None:
+        try:
+            self._stream_client(client)
+        except Exception as exc:
+            # Closing a superseded stream is deliberate, not a new failure.
+            with self._client_lock:
+                active = self._active_client is client
+            if self._run.is_set() and active:
+                self.status(f"MFP stream disconnected: {type(exc).__name__}: {exc}")
+        finally:
+            with self._client_lock:
+                if self._active_client is client:
+                    self._active_client = None
+            self._track(client, False)
+            client.close()
+
+    def _client_message(self, client, text, transport):
+        with self._client_lock:
+            if self._active_client is client and self._run.is_set():
+                self._handle(text, transport)
 
     def _stream_client(self, client: socket.socket) -> None:
         # 'G' cannot start a T-code axis. Inspect only the first received byte,
@@ -154,7 +193,7 @@ class MFPListener:
         if initial.startswith(b"G"):
             websocket = WebSocketInput(client, self._run.is_set, initial)
             if websocket.handshake():
-                websocket.receive(lambda text: self._handle(text, "websocket"))
+                websocket.receive(lambda text: self._client_message(client, text, "websocket"))
             return
         buffer = ""
         data = initial
@@ -162,11 +201,11 @@ class MFPListener:
             buffer += data.decode("ascii", errors="ignore")
             while "\n" in buffer:
                 line, buffer = buffer.split("\n", 1)
-                self._handle(line, "tcp")
+                self._client_message(client, line, "tcp")
             if " " in buffer:
                 tokens = buffer.split(" ")
                 buffer = tokens.pop()
-                self._handle(" ".join(tokens), "tcp")
+                self._client_message(client, " ".join(tokens), "tcp")
             if len(buffer) > WebSocketInput.MAX_MESSAGE:
                 return
             while self._run.is_set():
@@ -184,6 +223,7 @@ class MFPListener:
             udp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             udp.bind((host, port)); udp.settimeout(0.5)
             self._transport_live["udp"] = True
+            self._transport_errors.pop("udp", None)
             while self._run.is_set():
                 try: data, _ = udp.recvfrom(65535)
                 except socket.timeout: continue
@@ -295,7 +335,8 @@ class LatestFrameDispatcher:
 
 class _ReconnectClient:
     def __init__(self, status: Callable[[str], None]) -> None:
-        self.status, self._socket = status, None
+        self._status_callback, self._socket = status, None
+        self._status_context = threading.local()
         self._lock = threading.Lock()
         self._target: tuple[str, int] | None = None
         self._retry_at = 0.0
@@ -311,23 +352,52 @@ class _ReconnectClient:
                                          name="restim-reconnect", daemon=True)
         self._monitor.start()
 
+    def status(self, message: str) -> None:
+        pending = getattr(self._status_context, "pending", None)
+        if pending is None:
+            self._status_callback(message)
+        else:
+            pending.append(message)
+
+    @contextmanager
+    def _locked(self):
+        """Defer callbacks until socket state is unlocked.
+
+        A UI callback can read health() or synchronously marshal to Tk. Calling
+        it while holding the socket lock can deadlock both threads.
+        """
+        pending = []
+        self._lock.acquire()
+        self._status_context.pending = pending
+        try:
+            yield
+        finally:
+            del self._status_context.pending
+            self._lock.release()
+            for message in pending:
+                self._status_callback(message)
+
     @property
     def connected(self) -> bool: return self._socket is not None
 
     def health(self) -> dict[str, object]:
-        with self._lock:
-            now = time.monotonic()
-            return {
-                "connected": self._socket is not None,
-                "socket_state": "connected" if self._socket is not None else "disconnected",
-                "tx_age": None if self._last_send is None else now - self._last_send,
-                "send_cadence": (None if self._last_send is None or self._previous_send is None
-                                  else self._last_send - self._previous_send),
-                "send_count": self._send_count,
-                "send_failures": self._send_failures,
-                "reconnect_attempts": self._reconnect_attempts,
-                "reconnect_successes": self._reconnect_successes,
-            }
+        """Best-effort scalar telemetry; never wait for connection/send locks.
+
+        Values can straddle a connection transition. No socket operations or
+        state mutations occur here; protocol operations remain serialized.
+        """
+        now = time.monotonic()
+        return {
+            "connected": self._socket is not None,
+            "socket_state": "connected" if self._socket is not None else "disconnected",
+            "tx_age": None if self._last_send is None else now - self._last_send,
+            "send_cadence": (None if self._last_send is None or self._previous_send is None
+                              else self._last_send - self._previous_send),
+            "send_count": self._send_count,
+            "send_failures": self._send_failures,
+            "reconnect_attempts": self._reconnect_attempts,
+            "reconnect_successes": self._reconnect_successes,
+        }
 
     def _sent(self) -> None:
         now = time.monotonic()
@@ -335,18 +405,22 @@ class _ReconnectClient:
         self._send_count += 1
 
     def connect(self, host: str, port: int) -> None:
+        if self._closed.is_set():
+            raise OSError("ReStim client is closed")
         self.disconnect(False)
         self._target = (host, port)
         self._manual_disconnect = False
         try:
-            with self._lock:
+            with self._locked():
+                if self._closed.is_set():
+                    raise OSError("ReStim client is closed")
                 self._connect_now()
         except OSError:
             self._retry_at = time.monotonic() + 1.0
             raise
 
     def disconnect(self, manual: bool = True) -> None:
-        with self._lock:
+        with self._locked():
             if self._socket:
                 try: self._socket.close()
                 except OSError: pass
@@ -372,7 +446,7 @@ class _ReconnectClient:
     def _monitor_connection(self) -> None:
         """Reconnect independently of output flow and notice silent peer closure."""
         while not self._closed.wait(0.5):
-            with self._lock:
+            with self._locked():
                 if self._manual_disconnect or not self._target:
                     continue
                 if self._socket is None:
@@ -380,10 +454,14 @@ class _ReconnectClient:
                     continue
                 try:
                     readable, _, _ = select.select([self._socket], [], [], 0)
-                    if readable and self._socket.recv(1, socket.MSG_PEEK) == b"":
-                        raise ConnectionResetError("ReStim closed the connection")
+                    if readable:
+                        self._receive_available()
                 except (OSError, ValueError) as exc:
                     self._failed(exc)
+
+    def _receive_available(self):
+        if not self._socket.recv(4096):
+            raise ConnectionResetError("ReStim closed the connection")
 
     def close(self) -> None:
         self._closed.set()
@@ -413,14 +491,51 @@ class ReStimClient(_ReconnectClient):
         for axis, value in (("C0", frequency), ("P0", pulse_frequency),
                             ("P3", pulse_rise_time), ("P1", pulse_width)):
             if value is not None: commands.append(format_command(axis, value))
-        with self._lock:
+        with self._locked():
             if not self._ensure_connected(): return
-            try: self._socket.sendall((" ".join(commands) + "\n").encode("ascii"))
+            try:
+                self._socket.sendall((" ".join(commands) + "\n").encode("ascii"))
+                self._sent()
             except OSError as exc: self._failed(exc)
 
 
 class ReStimWebSocketClient(_ReconnectClient):
     """Dependency-free RFC 6455 client for ReStim's /tcode endpoint."""
+    def __init__(self, status: Callable[[str], None]) -> None:
+        self._tcode_history: deque[tuple[float, str]] = deque(maxlen=4096)
+        super().__init__(status)
+
+    def tcode_history(self) -> deque[tuple[float, str]]:
+        """Copy completed writes without waiting for the transport lock."""
+        return self._tcode_history.copy()
+
+    def _receive_available(self):
+        data = self._socket.recv(4096)
+        if not data:
+            raise ConnectionResetError("ReStim closed the connection")
+        self._incoming.extend(data)
+        while len(self._incoming) >= 2:
+            first, second = self._incoming[:2]
+            opcode, length, offset = first & 15, second & 127, 2
+            if second & 128 or first & 112:
+                raise OSError("Invalid ReStim WebSocket frame")
+            if length in (126, 127):
+                size = 2 if length == 126 else 8
+                if len(self._incoming) < 2 + size: return
+                length = int.from_bytes(self._incoming[2:2+size], "big")
+                offset += size
+            if length > 65536 or (opcode >= 8 and (length > 125 or not first & 128)):
+                raise OSError("Invalid or oversized ReStim WebSocket frame")
+            if len(self._incoming) < offset + length: return
+            payload = bytes(self._incoming[offset:offset+length])
+            del self._incoming[:offset+length]
+            if opcode == 8:
+                raise ConnectionResetError("ReStim sent WebSocket close")
+            if opcode == 9:
+                mask = os.urandom(4)
+                self._socket.sendall(bytes((0x8a, 0x80 | length)) + mask +
+                                     bytes(b ^ mask[i % 4] for i, b in enumerate(payload)))
+
     def _connect_now(self) -> None:
         assert self._target
         host, port = self._target
@@ -428,15 +543,23 @@ class ReStimWebSocketClient(_ReconnectClient):
         key = base64.b64encode(os.urandom(16)).decode("ascii")
         request = (f"GET /tcode HTTP/1.1\r\nHost: {host}:{port}\r\nUpgrade: websocket\r\n"
                    f"Connection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n")
-        sock.sendall(request.encode("ascii")); response = b""
-        while b"\r\n\r\n" not in response and len(response) < 16384:
-            chunk = sock.recv(4096)
-            if not chunk: break
-            response += chunk
+        response = b""
+        try:
+            sock.sendall(request.encode("ascii"))
+            deadline = time.monotonic() + 2.0
+            while b"\r\n\r\n" not in response and len(response) < 16384:
+                if time.monotonic() >= deadline: raise TimeoutError("ReStim handshake timed out")
+                chunk = sock.recv(1)
+                if not chunk: break
+                response += chunk
+        except OSError:
+            sock.close()
+            raise
         expected = base64.b64encode(hashlib.sha1((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest())
         if not response.startswith(b"HTTP/1.1 101") or expected.lower() not in response.lower():
             sock.close(); raise OSError("ReStim rejected the WebSocket handshake")
         self._socket = sock
+        self._incoming = bytearray()
         self._needs_neutral = getattr(self, "_has_connected", False)
         self._has_connected = True
         self.status(f"Connected to ws://{host}:{port}/tcode")
@@ -449,16 +572,31 @@ class ReStimWebSocketClient(_ReconnectClient):
         return bytes(header) + mask + bytes(byte ^ mask[i % 4] for i, byte in enumerate(payload))
 
     def _send_message(self, message: str, neutral: str) -> bool:
-        with self._lock:
+        pressure = getattr(self, 'pressure_control', None)
+        original_volume = next((token for token in message.split() if token[:2].upper() == 'V0'), None)
+        suppressed = getattr(self, "suppressed_axes", frozenset())
+        if suppressed:
+            message = " ".join(token for token in message.split()
+                               if token[:2].upper() not in suppressed)
+            neutral = " ".join(token for token in neutral.split()
+                               if token[:2].upper() not in suppressed)
+
+        with self._locked():
             if not self._ensure_connected():
                 return False
             try:
                 if getattr(self, "_needs_neutral", False):
                     self._socket.sendall(self._frame(neutral))
+                    self._tcode_history.append((time.monotonic(), neutral))
                     self._needs_neutral = False
                     self.status("Recovered safely; output resumed")
+                if pressure is not None and pressure.enabled:
+                    if 'V0' in suppressed and original_volume:
+                        message += ' ' + original_volume
+                    message = pressure.tcode(message)
                 self._socket.sendall(self._frame(message))
                 self._sent()
+                self._tcode_history.append((self._last_send, message))
                 return True
             except OSError as exc:
                 self._failed(exc)
@@ -467,7 +605,7 @@ class ReStimWebSocketClient(_ReconnectClient):
     def send_prostate(self, alpha, beta, volume, frequency, pulse_frequency,
                       pulse_width, pulse_rise_time) -> bool:
         message = " ".join((format_command("L0", alpha), format_command("L1", beta),
-                            format_command("V0", volume), format_command("F0", frequency),
+                            format_command("V0", volume), format_command("C0", frequency),
                             format_command("P0", pulse_frequency), format_command("P1", pulse_width),
                             format_command("P3", pulse_rise_time)))
         neutral = " ".join((format_command("L0", .5), format_command("L1", .5),
@@ -517,3 +655,4 @@ class ReStimWebSocketClient(_ReconnectClient):
                             for axis in ("E1", "E2", "E3", "E4")] +
                            [format_command("V0", 0.0)])
         return self._send_message(message, neutral)
+

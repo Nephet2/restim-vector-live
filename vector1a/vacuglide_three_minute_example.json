@@ -1,0 +1,152 @@
+{
+  "version": 1,
+  "name": "Three-minute speed and valve study",
+  "duration_ms": 180000,
+  "events": [
+    {
+      "start_ms": 0,
+      "kind": "speed",
+      "speed_percent": 5.0,
+      "duration_ms": 0
+    },
+    {
+      "start_ms": 100,
+      "kind": "minus",
+      "speed_percent": null,
+      "duration_ms": 2400
+    },
+    {
+      "start_ms": 8000,
+      "kind": "speed",
+      "speed_percent": 7.5,
+      "duration_ms": 0
+    },
+    {
+      "start_ms": 16000,
+      "kind": "speed",
+      "speed_percent": 10.0,
+      "duration_ms": 0
+    },
+    {
+      "start_ms": 24000,
+      "kind": "speed",
+      "speed_percent": 12.5,
+      "duration_ms": 0
+    },
+    {
+      "start_ms": 34000,
+      "kind": "speed",
+      "speed_percent": 11.25,
+      "duration_ms": 0
+    },
+    {
+      "start_ms": 44000,
+      "kind": "speed",
+      "speed_percent": 13.75,
+      "duration_ms": 0
+    },
+    {
+      "start_ms": 50000,
+      "kind": "minus",
+      "speed_percent": null,
+      "duration_ms": 2000
+    },
+    {
+      "start_ms": 56000,
+      "kind": "speed",
+      "speed_percent": 15.0,
+      "duration_ms": 0
+    },
+    {
+      "start_ms": 66000,
+      "kind": "speed",
+      "speed_percent": 12.5,
+      "duration_ms": 0
+    },
+    {
+      "start_ms": 76000,
+      "kind": "speed",
+      "speed_percent": 10.5,
+      "duration_ms": 0
+    },
+    {
+      "start_ms": 86000,
+      "kind": "speed",
+      "speed_percent": 13.0,
+      "duration_ms": 0
+    },
+    {
+      "start_ms": 96000,
+      "kind": "speed",
+      "speed_percent": 15.0,
+      "duration_ms": 0
+    },
+    {
+      "start_ms": 100000,
+      "kind": "plus",
+      "speed_percent": null,
+      "duration_ms": 1500
+    },
+    {
+      "start_ms": 106000,
+      "kind": "speed",
+      "speed_percent": 13.75,
+      "duration_ms": 0
+    },
+    {
+      "start_ms": 116000,
+      "kind": "speed",
+      "speed_percent": 11.25,
+      "duration_ms": 0
+    },
+    {
+      "start_ms": 126000,
+      "kind": "speed",
+      "speed_percent": 13.75,
+      "duration_ms": 0
+    },
+    {
+      "start_ms": 136000,
+      "kind": "speed",
+      "speed_percent": 15.5,
+      "duration_ms": 0
+    },
+    {
+      "start_ms": 140000,
+      "kind": "minus",
+      "speed_percent": null,
+      "duration_ms": 2000
+    },
+    {
+      "start_ms": 148000,
+      "kind": "speed",
+      "speed_percent": 13.75,
+      "duration_ms": 0
+    },
+    {
+      "start_ms": 158000,
+      "kind": "speed",
+      "speed_percent": 11.25,
+      "duration_ms": 0
+    },
+    {
+      "start_ms": 168000,
+      "kind": "speed",
+      "speed_percent": 8.75,
+      "duration_ms": 0
+    },
+    {
+      "start_ms": 175000,
+      "kind": "speed",
+      "speed_percent": 6.25,
+      "duration_ms": 0
+    },
+    {
+      "start_ms": 179000,
+      "kind": "speed",
+      "speed_percent": 5.0,
+      "duration_ms": 0
+    }
+  ],
+  "source_note": "Imported from pasted Script instructions. A <1 s interval was estimated from the displayed times. Speed was scaled to 25% of the source values."
+}

@@ -1,5 +1,5 @@
 @echo off
+setlocal
 cd /d "%~dp0"
-python -m vector1a
+python -I "%~dp0standalone_entry.py"
 if errorlevel 1 pause
-

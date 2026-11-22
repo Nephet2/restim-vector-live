@@ -1,0 +1,2708 @@
+{
+  "all_profiles": {
+    "first_run": false,
+    "saved": {
+      "active_custom_profile": "Spatial",
+      "authored_axis_routes": [
+        "E1",
+        "P0"
+      ],
+      "authored_routing_mode": "Auto authored ReStim set",
+      "auto_start_mfp": "initial",
+      "auto_start_prostate": "initial",
+      "auto_start_restim": "initial",
+      "automatic_ready": "initial",
+      "bottom_focus_strength": "initial",
+      "bottom_spatial_gain_max_percent": "initial",
+      "bottom_spatial_gain_min_percent": "initial",
+      "bottom_spatial_gain_step_percent": "initial",
+      "controller_enabled": "initial",
+      "controller_fine_step": "initial",
+      "custom_spatial_curves": [
+        {
+          "interpolation": "smooth",
+          "points": [
+            [
+              0,
+              100.0
+            ],
+            [
+              16.667,
+              100.0
+            ],
+            [
+              33.333,
+              100.0
+            ],
+            [
+              50,
+              100.0
+            ],
+            [
+              66.667,
+              100.0
+            ],
+            [
+              83.333,
+              88.065
+            ],
+            [
+              100,
+              80.0
+            ]
+          ]
+        },
+        {
+          "interpolation": "smooth",
+          "points": [
+            [
+              0,
+              33.333
+            ],
+            [
+              16.667,
+              60.001
+            ],
+            [
+              33.333,
+              99.999
+            ],
+            [
+              50,
+              100.0
+            ],
+            [
+              66.667,
+              100.0
+            ],
+            [
+              83.333,
+              100.0
+            ],
+            [
+              100,
+              100.0
+            ]
+          ]
+        },
+        {
+          "interpolation": "smooth",
+          "points": [
+            [
+              0,
+              33.333
+            ],
+            [
+              16.667,
+              20.0
+            ],
+            [
+              33.333,
+              0.0
+            ],
+            [
+              50,
+              50.0
+            ],
+            [
+              66.667,
+              100.0
+            ],
+            [
+              83.333,
+              100.0
+            ],
+            [
+              100,
+              100.0
+            ]
+          ]
+        },
+        {
+          "interpolation": "smooth",
+          "points": [
+            [
+              0,
+              33.333
+            ],
+            [
+              16.667,
+              20.0
+            ],
+            [
+              33.333,
+              0.0
+            ],
+            [
+              50,
+              0.0
+            ],
+            [
+              66.667,
+              0.001
+            ],
+            [
+              83.333,
+              59.677
+            ],
+            [
+              100,
+              100.0
+            ]
+          ]
+        }
+      ],
+      "custom_spatial_profiles": {
+        "Spatial": {
+          "curves": [
+            {
+              "interpolation": "smooth",
+              "points": [
+                [
+                  0,
+                  100.0
+                ],
+                [
+                  16.667,
+                  100.0
+                ],
+                [
+                  33.333,
+                  100.0
+                ],
+                [
+                  50,
+                  100.0
+                ],
+                [
+                  66.667,
+                  100.0
+                ],
+                [
+                  83.333,
+                  88.065
+                ],
+                [
+                  100,
+                  80.0
+                ]
+              ]
+            },
+            {
+              "interpolation": "smooth",
+              "points": [
+                [
+                  0,
+                  33.333
+                ],
+                [
+                  16.667,
+                  60.001
+                ],
+                [
+                  33.333,
+                  99.999
+                ],
+                [
+                  50,
+                  100.0
+                ],
+                [
+                  66.667,
+                  100.0
+                ],
+                [
+                  83.333,
+                  100.0
+                ],
+                [
+                  100,
+                  100.0
+                ]
+              ]
+            },
+            {
+              "interpolation": "smooth",
+              "points": [
+                [
+                  0,
+                  33.333
+                ],
+                [
+                  16.667,
+                  20.0
+                ],
+                [
+                  33.333,
+                  0.0
+                ],
+                [
+                  50,
+                  50.0
+                ],
+                [
+                  66.667,
+                  100.0
+                ],
+                [
+                  83.333,
+                  100.0
+                ],
+                [
+                  100,
+                  100.0
+                ]
+              ]
+            },
+            {
+              "interpolation": "smooth",
+              "points": [
+                [
+                  0,
+                  33.333
+                ],
+                [
+                  16.667,
+                  20.0
+                ],
+                [
+                  33.333,
+                  0.0
+                ],
+                [
+                  50,
+                  0.0
+                ],
+                [
+                  66.667,
+                  0.001
+                ],
+                [
+                  83.333,
+                  59.677
+                ],
+                [
+                  100,
+                  100.0
+                ]
+              ]
+            }
+          ],
+          "description": "spatial"
+        }
+      },
+      "direct_controller_enabled": "initial",
+      "direction_probability": "initial",
+      "director_bottom_focus": "Anal Focus",
+      "director_bottom_focus_profiles": {
+        "Anal Focus": {
+          "prostate_rest_level": 0.4
+        }
+      },
+      "director_enabled": "initial",
+      "director_events_enabled": "initial",
+      "director_host": "initial",
+      "director_port": "initial",
+      "director_primary_spatial": "top_custom",
+      "director_secondary_spatial": "bottom_focus",
+      "director_texture": "Smooth",
+      "director_texture_profiles": {
+        "Smooth": {
+          "frequency_ramp_level": 0.6
+        }
+      },
+      "director_top_focus": "Root Focus",
+      "director_top_focus_profiles": {
+        "Root Focus": {
+          "electrode_order": "ABCD"
+        }
+      },
+      "director_variation": "Wild",
+      "director_variation_profiles": {
+        "Wild": {
+          "variety_enabled": true
+        }
+      },
+      "dynamic_volume": "initial",
+      "electrode_order": "initial",
+      "first_run_complete": true,
+      "four_phase_acceleration_width_scale": "initial",
+      "four_phase_adaptive_crossover": "initial",
+      "four_phase_crossover_curve": "initial",
+      "four_phase_crossover_sharpness": "initial",
+      "four_phase_crossover_width": "initial",
+      "four_phase_deceleration_width_scale": "initial",
+      "four_phase_directional_trajectory": "initial",
+      "four_phase_fast_crossover_width": "initial",
+      "four_phase_full_depth_capture": "initial",
+      "four_phase_group_delay": "initial",
+      "four_phase_group_delay_ms": "initial",
+      "four_phase_group_delay_transition": "initial",
+      "four_phase_host": "initial",
+      "four_phase_invert": "initial",
+      "four_phase_moving_sequence": "initial",
+      "four_phase_moving_sequence_depth": "initial",
+      "four_phase_moving_sequence_width": "initial",
+      "four_phase_port": "initial",
+      "four_phase_presets": {
+        "A": {
+          "four_phase_volume_ceiling": 0.8
+        },
+        "B": {
+          "electrode_order": "BACD"
+        }
+      },
+      "four_phase_return_depth": "initial",
+      "four_phase_reversal_emphasis": "initial",
+      "four_phase_reversal_strength": "initial",
+      "four_phase_reversal_window": "initial",
+      "four_phase_reverse_curve": "initial",
+      "four_phase_reverse_sharpness": "initial",
+      "four_phase_reverse_width_scale": "initial",
+      "four_phase_slow_crossover_width": "initial",
+      "four_phase_spatial_blend": "initial",
+      "four_phase_spatial_curve": "initial",
+      "four_phase_spatial_model": "initial",
+      "four_phase_spread_softness": "initial",
+      "four_phase_stroke_phase_texture": "initial",
+      "four_phase_tip_retention": "initial",
+      "four_phase_volume_ceiling": "initial",
+      "four_phase_volume_cycle": "initial",
+      "four_phase_volume_headroom": "initial",
+      "four_phase_volume_modulation": "initial",
+      "frequency_max": "initial",
+      "frequency_min": "initial",
+      "frequency_ramp_level": "initial",
+      "frequency_ratio": "initial",
+      "howl_balance_a": "initial",
+      "howl_balance_b": "initial",
+      "howl_boost": "initial",
+      "howl_freq_max": "initial",
+      "howl_freq_min": "initial",
+      "howl_pan": "initial",
+      "howl_position_strength": "initial",
+      "howl_pulse": "initial",
+      "howl_scaling": "initial",
+      "howl_sigma": "initial",
+      "howl_thump": "initial",
+      "howl_width": "initial",
+      "jitter_amplitude": "initial",
+      "jitter_cycle_seconds": "initial",
+      "jitter_enabled": "initial",
+      "lookahead": "initial",
+      "match_spatial_intensity": "initial",
+      "mfp_host": "initial",
+      "mfp_launch_target": "initial",
+      "mfp_port": "initial",
+      "minimum_radius": "initial",
+      "mode": "initial",
+      "modifier_enabled": "initial",
+      "modifier_position_bias": "initial",
+      "modifier_smoothing": "initial",
+      "modifier_stroke_range": "initial",
+      "modifier_tempo_duration_seconds": "initial",
+      "modifier_tempo_scale": "initial",
+      "modifier_transition_seconds": "initial",
+      "motion_falling_volume_multiplier": "initial",
+      "motion_rising_volume_multiplier": "initial",
+      "parameter_response_curves": {
+        "frequency": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "primary_volume": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "prostate_volume": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "pulse_frequency": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "pulse_rise_time": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "pulse_width": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        }
+      },
+      "parameter_response_profiles": {
+        "Response": {
+          "curves": {
+            "frequency": {
+              "interpolation": "linear",
+              "points": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  100,
+                  100
+                ]
+              ]
+            },
+            "primary_volume": {
+              "interpolation": "linear",
+              "points": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  100,
+                  100
+                ]
+              ]
+            },
+            "prostate_volume": {
+              "interpolation": "linear",
+              "points": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  100,
+                  100
+                ]
+              ]
+            },
+            "pulse_frequency": {
+              "interpolation": "linear",
+              "points": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  100,
+                  100
+                ]
+              ]
+            },
+            "pulse_rise_time": {
+              "interpolation": "linear",
+              "points": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  100,
+                  100
+                ]
+              ]
+            },
+            "pulse_width": {
+              "interpolation": "linear",
+              "points": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  100,
+                  100
+                ]
+              ]
+            }
+          },
+          "description": "response"
+        }
+      },
+      "preset_a_name": "initial",
+      "preset_b_name": "initial",
+      "preset_transition_seconds": "initial",
+      "prostate_arc_depth": "initial",
+      "prostate_host": "initial",
+      "prostate_launch_target": "initial",
+      "prostate_narrow_ratio": "initial",
+      "prostate_phase_degrees": "initial",
+      "prostate_phase_step": "initial",
+      "prostate_port": 12350,
+      "prostate_rest_level": "initial",
+      "prostate_threshold": "initial",
+      "prostate_volume_multiplier": "initial",
+      "pulse_frequency_max": "initial",
+      "pulse_frequency_min": "initial",
+      "pulse_frequency_ratio": "initial",
+      "pulse_rise_max": "initial",
+      "pulse_rise_min": "initial",
+      "pulse_rise_ratio": "initial",
+      "pulse_width_max": "initial",
+      "pulse_width_min": "initial",
+      "pulse_width_ratio": "initial",
+      "rate": "initial",
+      "restim_host": "initial",
+      "restim_launch_target": "initial",
+      "restim_port": 12355,
+      "send_frequency": "initial",
+      "send_pulse_frequency": "initial",
+      "send_pulse_rise": "initial",
+      "send_pulse_width": "initial",
+      "spatial_gain_ramp_percent_per_second": "initial",
+      "speed_linked_variation": "initial",
+      "speed_threshold": "initial",
+      "timeline_auto_load_script": "initial",
+      "timeline_clock_source": "initial",
+      "timeline_media_host": "initial",
+      "timeline_mpc_port": "initial",
+      "timeline_script_libraries": "initial",
+      "timeline_vlc_password": "initial",
+      "timeline_vlc_port": "initial",
+      "top_focus_nominal_ceiling": "initial",
+      "top_focus_strength": "initial",
+      "top_spatial_gain_max_percent": "initial",
+      "top_spatial_gain_min_percent": "initial",
+      "top_spatial_gain_step_percent": "initial",
+      "variation_fade_seconds": "initial",
+      "variation_full_speed_percent": "initial",
+      "variety_electrode_morph": "initial",
+      "variety_electrode_morph_cycle": "initial",
+      "variety_electrode_morph_transition_seconds": "initial",
+      "variety_enabled": "initial",
+      "variety_frequency": "initial",
+      "variety_frequency_cycle": "initial",
+      "variety_phase": "initial",
+      "variety_phase_cycle": "initial",
+      "variety_pulse_frequency": "initial",
+      "variety_pulse_frequency_cycle": "initial",
+      "variety_pulse_rise": "initial",
+      "variety_pulse_rise_cycle": "initial",
+      "variety_pulse_width": "initial",
+      "variety_pulse_width_cycle": "initial",
+      "volume": "initial",
+      "volume_ramp_up": "initial",
+      "volume_ratio": "initial",
+      "volume_response_max": "initial",
+      "volume_response_min": "initial",
+      "volume_rest_level": "initial"
+    }
+  },
+  "empty": {
+    "first_run": true,
+    "saved": {
+      "active_custom_profile": null,
+      "authored_axis_routes": [],
+      "authored_routing_mode": "initial",
+      "auto_start_mfp": "initial",
+      "auto_start_prostate": "initial",
+      "auto_start_restim": "initial",
+      "automatic_ready": "initial",
+      "bottom_focus_strength": "initial",
+      "bottom_spatial_gain_max_percent": "initial",
+      "bottom_spatial_gain_min_percent": "initial",
+      "bottom_spatial_gain_step_percent": "initial",
+      "controller_enabled": "initial",
+      "controller_fine_step": "initial",
+      "custom_spatial_curves": [
+        {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              100.0
+            ],
+            [
+              16.667,
+              100.0
+            ],
+            [
+              33.333,
+              41.026
+            ],
+            [
+              50,
+              61.538
+            ],
+            [
+              66.667,
+              41.026
+            ],
+            [
+              83.333,
+              73.075
+            ],
+            [
+              100,
+              41.026
+            ]
+          ]
+        },
+        {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              17.949
+            ],
+            [
+              16.667,
+              88.464
+            ],
+            [
+              33.333,
+              100.0
+            ],
+            [
+              50,
+              100.0
+            ],
+            [
+              66.667,
+              41.026
+            ],
+            [
+              83.333,
+              73.075
+            ],
+            [
+              100,
+              41.026
+            ]
+          ]
+        },
+        {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              41.026
+            ],
+            [
+              16.667,
+              50.001
+            ],
+            [
+              33.333,
+              17.949
+            ],
+            [
+              50,
+              88.462
+            ],
+            [
+              66.667,
+              100.0
+            ],
+            [
+              83.333,
+              100.0
+            ],
+            [
+              100,
+              17.949
+            ]
+          ]
+        },
+        {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              41.026
+            ],
+            [
+              16.667,
+              61.54
+            ],
+            [
+              33.333,
+              41.026
+            ],
+            [
+              50,
+              50.0
+            ],
+            [
+              66.667,
+              17.949
+            ],
+            [
+              83.333,
+              99.997
+            ],
+            [
+              100,
+              100.0
+            ]
+          ]
+        }
+      ],
+      "custom_spatial_profiles": {},
+      "direct_controller_enabled": "initial",
+      "direction_probability": "initial",
+      "director_bottom_focus": "initial",
+      "director_bottom_focus_profiles": {},
+      "director_enabled": "initial",
+      "director_events_enabled": "initial",
+      "director_host": "initial",
+      "director_port": "initial",
+      "director_primary_spatial": "initial",
+      "director_secondary_spatial": "initial",
+      "director_texture": "initial",
+      "director_texture_profiles": {},
+      "director_top_focus": "initial",
+      "director_top_focus_profiles": {},
+      "director_variation": "initial",
+      "director_variation_profiles": {},
+      "dynamic_volume": "initial",
+      "electrode_order": "initial",
+      "first_run_complete": true,
+      "four_phase_acceleration_width_scale": "initial",
+      "four_phase_adaptive_crossover": "initial",
+      "four_phase_crossover_curve": "initial",
+      "four_phase_crossover_sharpness": "initial",
+      "four_phase_crossover_width": "initial",
+      "four_phase_deceleration_width_scale": "initial",
+      "four_phase_directional_trajectory": "initial",
+      "four_phase_fast_crossover_width": "initial",
+      "four_phase_full_depth_capture": "initial",
+      "four_phase_group_delay": "initial",
+      "four_phase_group_delay_ms": "initial",
+      "four_phase_group_delay_transition": "initial",
+      "four_phase_host": "initial",
+      "four_phase_invert": "initial",
+      "four_phase_moving_sequence": "initial",
+      "four_phase_moving_sequence_depth": "initial",
+      "four_phase_moving_sequence_width": "initial",
+      "four_phase_port": "initial",
+      "four_phase_presets": {
+        "B": {
+          "old": 1
+        }
+      },
+      "four_phase_return_depth": "initial",
+      "four_phase_reversal_emphasis": "initial",
+      "four_phase_reversal_strength": "initial",
+      "four_phase_reversal_window": "initial",
+      "four_phase_reverse_curve": "initial",
+      "four_phase_reverse_sharpness": "initial",
+      "four_phase_reverse_width_scale": "initial",
+      "four_phase_slow_crossover_width": "initial",
+      "four_phase_spatial_blend": "initial",
+      "four_phase_spatial_curve": "initial",
+      "four_phase_spatial_model": "initial",
+      "four_phase_spread_softness": "initial",
+      "four_phase_stroke_phase_texture": "initial",
+      "four_phase_tip_retention": "initial",
+      "four_phase_volume_ceiling": "initial",
+      "four_phase_volume_cycle": "initial",
+      "four_phase_volume_headroom": "initial",
+      "four_phase_volume_modulation": "initial",
+      "frequency_max": "initial",
+      "frequency_min": "initial",
+      "frequency_ramp_level": "initial",
+      "frequency_ratio": "initial",
+      "howl_balance_a": "initial",
+      "howl_balance_b": "initial",
+      "howl_boost": "initial",
+      "howl_freq_max": "initial",
+      "howl_freq_min": "initial",
+      "howl_pan": "initial",
+      "howl_position_strength": "initial",
+      "howl_pulse": "initial",
+      "howl_scaling": "initial",
+      "howl_sigma": "initial",
+      "howl_thump": "initial",
+      "howl_width": "initial",
+      "jitter_amplitude": "initial",
+      "jitter_cycle_seconds": "initial",
+      "jitter_enabled": "initial",
+      "lookahead": "initial",
+      "match_spatial_intensity": "initial",
+      "mfp_host": "initial",
+      "mfp_launch_target": "initial",
+      "mfp_port": "initial",
+      "minimum_radius": "initial",
+      "mode": "initial",
+      "modifier_enabled": "initial",
+      "modifier_position_bias": "initial",
+      "modifier_smoothing": "initial",
+      "modifier_stroke_range": "initial",
+      "modifier_tempo_duration_seconds": "initial",
+      "modifier_tempo_scale": "initial",
+      "modifier_transition_seconds": "initial",
+      "motion_falling_volume_multiplier": "initial",
+      "motion_rising_volume_multiplier": "initial",
+      "parameter_response_curves": {
+        "frequency": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "primary_volume": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "prostate_volume": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "pulse_frequency": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "pulse_rise_time": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "pulse_width": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        }
+      },
+      "parameter_response_profiles": {},
+      "preset_a_name": "initial",
+      "preset_b_name": "initial",
+      "preset_transition_seconds": "initial",
+      "prostate_arc_depth": "initial",
+      "prostate_host": "initial",
+      "prostate_launch_target": "initial",
+      "prostate_narrow_ratio": "initial",
+      "prostate_phase_degrees": "initial",
+      "prostate_phase_step": "initial",
+      "prostate_port": "initial",
+      "prostate_rest_level": "initial",
+      "prostate_threshold": "initial",
+      "prostate_volume_multiplier": "initial",
+      "pulse_frequency_max": "initial",
+      "pulse_frequency_min": "initial",
+      "pulse_frequency_ratio": "initial",
+      "pulse_rise_max": "initial",
+      "pulse_rise_min": "initial",
+      "pulse_rise_ratio": "initial",
+      "pulse_width_max": "initial",
+      "pulse_width_min": "initial",
+      "pulse_width_ratio": "initial",
+      "rate": "initial",
+      "restim_host": "initial",
+      "restim_launch_target": "initial",
+      "restim_port": "initial",
+      "send_frequency": "initial",
+      "send_pulse_frequency": "initial",
+      "send_pulse_rise": "initial",
+      "send_pulse_width": "initial",
+      "spatial_gain_ramp_percent_per_second": "initial",
+      "speed_linked_variation": "initial",
+      "speed_threshold": "initial",
+      "timeline_auto_load_script": "initial",
+      "timeline_clock_source": "initial",
+      "timeline_media_host": "initial",
+      "timeline_mpc_port": "initial",
+      "timeline_script_libraries": "initial",
+      "timeline_vlc_password": "initial",
+      "timeline_vlc_port": "initial",
+      "top_focus_nominal_ceiling": "initial",
+      "top_focus_strength": "initial",
+      "top_spatial_gain_max_percent": "initial",
+      "top_spatial_gain_min_percent": "initial",
+      "top_spatial_gain_step_percent": "initial",
+      "variation_fade_seconds": "initial",
+      "variation_full_speed_percent": "initial",
+      "variety_electrode_morph": "initial",
+      "variety_electrode_morph_cycle": "initial",
+      "variety_electrode_morph_transition_seconds": "initial",
+      "variety_enabled": "initial",
+      "variety_frequency": "initial",
+      "variety_frequency_cycle": "initial",
+      "variety_phase": "initial",
+      "variety_phase_cycle": "initial",
+      "variety_pulse_frequency": "initial",
+      "variety_pulse_frequency_cycle": "initial",
+      "variety_pulse_rise": "initial",
+      "variety_pulse_rise_cycle": "initial",
+      "variety_pulse_width": "initial",
+      "variety_pulse_width_cycle": "initial",
+      "volume": "initial",
+      "volume_ramp_up": "initial",
+      "volume_ratio": "initial",
+      "volume_response_max": "initial",
+      "volume_response_min": "initial",
+      "volume_rest_level": "initial"
+    }
+  },
+  "explicit_over_legacy": {
+    "first_run": false,
+    "saved": {
+      "active_custom_profile": null,
+      "authored_axis_routes": [],
+      "authored_routing_mode": "initial",
+      "auto_start_mfp": "initial",
+      "auto_start_prostate": "initial",
+      "auto_start_restim": "initial",
+      "automatic_ready": "initial",
+      "bottom_focus_strength": "initial",
+      "bottom_spatial_gain_max_percent": "initial",
+      "bottom_spatial_gain_min_percent": "initial",
+      "bottom_spatial_gain_step_percent": "initial",
+      "controller_enabled": "initial",
+      "controller_fine_step": "initial",
+      "custom_spatial_curves": [
+        {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              100.0
+            ],
+            [
+              16.667,
+              100.0
+            ],
+            [
+              33.333,
+              41.026
+            ],
+            [
+              50,
+              61.538
+            ],
+            [
+              66.667,
+              41.026
+            ],
+            [
+              83.333,
+              73.075
+            ],
+            [
+              100,
+              41.026
+            ]
+          ]
+        },
+        {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              17.949
+            ],
+            [
+              16.667,
+              88.464
+            ],
+            [
+              33.333,
+              100.0
+            ],
+            [
+              50,
+              100.0
+            ],
+            [
+              66.667,
+              41.026
+            ],
+            [
+              83.333,
+              73.075
+            ],
+            [
+              100,
+              41.026
+            ]
+          ]
+        },
+        {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              41.026
+            ],
+            [
+              16.667,
+              50.001
+            ],
+            [
+              33.333,
+              17.949
+            ],
+            [
+              50,
+              88.462
+            ],
+            [
+              66.667,
+              100.0
+            ],
+            [
+              83.333,
+              100.0
+            ],
+            [
+              100,
+              17.949
+            ]
+          ]
+        },
+        {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              41.026
+            ],
+            [
+              16.667,
+              61.54
+            ],
+            [
+              33.333,
+              41.026
+            ],
+            [
+              50,
+              50.0
+            ],
+            [
+              66.667,
+              17.949
+            ],
+            [
+              83.333,
+              99.997
+            ],
+            [
+              100,
+              100.0
+            ]
+          ]
+        }
+      ],
+      "custom_spatial_profiles": {},
+      "direct_controller_enabled": "initial",
+      "direction_probability": "initial",
+      "director_bottom_focus": "initial",
+      "director_bottom_focus_profiles": {},
+      "director_enabled": "initial",
+      "director_events_enabled": "initial",
+      "director_host": "initial",
+      "director_port": "initial",
+      "director_primary_spatial": "initial",
+      "director_secondary_spatial": "initial",
+      "director_texture": "initial",
+      "director_texture_profiles": {},
+      "director_top_focus": "initial",
+      "director_top_focus_profiles": {},
+      "director_variation": "initial",
+      "director_variation_profiles": {},
+      "dynamic_volume": "initial",
+      "electrode_order": "initial",
+      "first_run_complete": true,
+      "four_phase_acceleration_width_scale": "initial",
+      "four_phase_adaptive_crossover": "initial",
+      "four_phase_crossover_curve": "initial",
+      "four_phase_crossover_sharpness": "initial",
+      "four_phase_crossover_width": "initial",
+      "four_phase_deceleration_width_scale": "initial",
+      "four_phase_directional_trajectory": "initial",
+      "four_phase_fast_crossover_width": "initial",
+      "four_phase_full_depth_capture": "initial",
+      "four_phase_group_delay": "initial",
+      "four_phase_group_delay_ms": "initial",
+      "four_phase_group_delay_transition": "initial",
+      "four_phase_host": "initial",
+      "four_phase_invert": "initial",
+      "four_phase_moving_sequence": "initial",
+      "four_phase_moving_sequence_depth": "initial",
+      "four_phase_moving_sequence_width": "initial",
+      "four_phase_port": "initial",
+      "four_phase_presets": {
+        "B": {
+          "old": 1
+        }
+      },
+      "four_phase_return_depth": "initial",
+      "four_phase_reversal_emphasis": "initial",
+      "four_phase_reversal_strength": "initial",
+      "four_phase_reversal_window": "initial",
+      "four_phase_reverse_curve": "initial",
+      "four_phase_reverse_sharpness": "initial",
+      "four_phase_reverse_width_scale": "initial",
+      "four_phase_slow_crossover_width": "initial",
+      "four_phase_spatial_blend": "initial",
+      "four_phase_spatial_curve": "initial",
+      "four_phase_spatial_model": "initial",
+      "four_phase_spread_softness": "initial",
+      "four_phase_stroke_phase_texture": "initial",
+      "four_phase_tip_retention": "initial",
+      "four_phase_volume_ceiling": "initial",
+      "four_phase_volume_cycle": "initial",
+      "four_phase_volume_headroom": "initial",
+      "four_phase_volume_modulation": "initial",
+      "frequency_max": "initial",
+      "frequency_min": "initial",
+      "frequency_ramp_level": "initial",
+      "frequency_ratio": "initial",
+      "howl_balance_a": "initial",
+      "howl_balance_b": "initial",
+      "howl_boost": "initial",
+      "howl_freq_max": "initial",
+      "howl_freq_min": "initial",
+      "howl_pan": "initial",
+      "howl_position_strength": "initial",
+      "howl_pulse": "initial",
+      "howl_scaling": "initial",
+      "howl_sigma": "initial",
+      "howl_thump": "initial",
+      "howl_width": "initial",
+      "jitter_amplitude": "initial",
+      "jitter_cycle_seconds": "initial",
+      "jitter_enabled": "initial",
+      "lookahead": "initial",
+      "match_spatial_intensity": "initial",
+      "mfp_host": "initial",
+      "mfp_launch_target": "initial",
+      "mfp_port": "initial",
+      "minimum_radius": "initial",
+      "mode": "initial",
+      "modifier_enabled": "initial",
+      "modifier_position_bias": "initial",
+      "modifier_smoothing": "initial",
+      "modifier_stroke_range": 0.9,
+      "modifier_tempo_duration_seconds": "initial",
+      "modifier_tempo_scale": "initial",
+      "modifier_transition_seconds": "initial",
+      "motion_falling_volume_multiplier": "initial",
+      "motion_rising_volume_multiplier": "initial",
+      "parameter_response_curves": {
+        "frequency": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "primary_volume": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "prostate_volume": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "pulse_frequency": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "pulse_rise_time": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "pulse_width": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        }
+      },
+      "parameter_response_profiles": {},
+      "preset_a_name": "initial",
+      "preset_b_name": "initial",
+      "preset_transition_seconds": "initial",
+      "prostate_arc_depth": "initial",
+      "prostate_host": "initial",
+      "prostate_launch_target": "initial",
+      "prostate_narrow_ratio": "initial",
+      "prostate_phase_degrees": "initial",
+      "prostate_phase_step": "initial",
+      "prostate_port": "initial",
+      "prostate_rest_level": "initial",
+      "prostate_threshold": "initial",
+      "prostate_volume_multiplier": "initial",
+      "pulse_frequency_max": "initial",
+      "pulse_frequency_min": "initial",
+      "pulse_frequency_ratio": "initial",
+      "pulse_rise_max": "initial",
+      "pulse_rise_min": "initial",
+      "pulse_rise_ratio": "initial",
+      "pulse_width_max": "initial",
+      "pulse_width_min": "initial",
+      "pulse_width_ratio": "initial",
+      "rate": "initial",
+      "restim_host": "initial",
+      "restim_launch_target": "initial",
+      "restim_port": "initial",
+      "send_frequency": "initial",
+      "send_pulse_frequency": "initial",
+      "send_pulse_rise": "initial",
+      "send_pulse_width": "initial",
+      "spatial_gain_ramp_percent_per_second": "initial",
+      "speed_linked_variation": "initial",
+      "speed_threshold": "initial",
+      "timeline_auto_load_script": "initial",
+      "timeline_clock_source": "initial",
+      "timeline_media_host": "initial",
+      "timeline_mpc_port": "initial",
+      "timeline_script_libraries": "initial",
+      "timeline_vlc_password": "initial",
+      "timeline_vlc_port": "initial",
+      "top_focus_nominal_ceiling": "initial",
+      "top_focus_strength": "initial",
+      "top_spatial_gain_max_percent": "initial",
+      "top_spatial_gain_min_percent": "initial",
+      "top_spatial_gain_step_percent": "initial",
+      "variation_fade_seconds": "initial",
+      "variation_full_speed_percent": "initial",
+      "variety_electrode_morph": "initial",
+      "variety_electrode_morph_cycle": "initial",
+      "variety_electrode_morph_transition_seconds": "initial",
+      "variety_enabled": "initial",
+      "variety_frequency": "initial",
+      "variety_frequency_cycle": "initial",
+      "variety_phase": "initial",
+      "variety_phase_cycle": "initial",
+      "variety_pulse_frequency": "initial",
+      "variety_pulse_frequency_cycle": "initial",
+      "variety_pulse_rise": "initial",
+      "variety_pulse_rise_cycle": "initial",
+      "variety_pulse_width": "initial",
+      "variety_pulse_width_cycle": "initial",
+      "volume": "initial",
+      "volume_ramp_up": "initial",
+      "volume_ratio": "initial",
+      "volume_response_max": "initial",
+      "volume_response_min": "initial",
+      "volume_rest_level": "initial"
+    }
+  },
+  "invalid_profiles": {
+    "first_run": true,
+    "saved": {
+      "active_custom_profile": null,
+      "authored_axis_routes": [
+        "P3"
+      ],
+      "authored_routing_mode": "initial",
+      "auto_start_mfp": "initial",
+      "auto_start_prostate": "initial",
+      "auto_start_restim": "initial",
+      "automatic_ready": "initial",
+      "bottom_focus_strength": "initial",
+      "bottom_spatial_gain_max_percent": "initial",
+      "bottom_spatial_gain_min_percent": "initial",
+      "bottom_spatial_gain_step_percent": "initial",
+      "controller_enabled": "initial",
+      "controller_fine_step": "initial",
+      "custom_spatial_curves": [
+        {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              100.0
+            ],
+            [
+              16.667,
+              100.0
+            ],
+            [
+              33.333,
+              41.026
+            ],
+            [
+              50,
+              61.538
+            ],
+            [
+              66.667,
+              41.026
+            ],
+            [
+              83.333,
+              73.075
+            ],
+            [
+              100,
+              41.026
+            ]
+          ]
+        },
+        {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              17.949
+            ],
+            [
+              16.667,
+              88.464
+            ],
+            [
+              33.333,
+              100.0
+            ],
+            [
+              50,
+              100.0
+            ],
+            [
+              66.667,
+              41.026
+            ],
+            [
+              83.333,
+              73.075
+            ],
+            [
+              100,
+              41.026
+            ]
+          ]
+        },
+        {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              41.026
+            ],
+            [
+              16.667,
+              50.001
+            ],
+            [
+              33.333,
+              17.949
+            ],
+            [
+              50,
+              88.462
+            ],
+            [
+              66.667,
+              100.0
+            ],
+            [
+              83.333,
+              100.0
+            ],
+            [
+              100,
+              17.949
+            ]
+          ]
+        },
+        {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              41.026
+            ],
+            [
+              16.667,
+              61.54
+            ],
+            [
+              33.333,
+              41.026
+            ],
+            [
+              50,
+              50.0
+            ],
+            [
+              66.667,
+              17.949
+            ],
+            [
+              83.333,
+              99.997
+            ],
+            [
+              100,
+              100.0
+            ]
+          ]
+        }
+      ],
+      "custom_spatial_profiles": {},
+      "direct_controller_enabled": "initial",
+      "direction_probability": "initial",
+      "director_bottom_focus": "initial",
+      "director_bottom_focus_profiles": {},
+      "director_enabled": "initial",
+      "director_events_enabled": "initial",
+      "director_host": "initial",
+      "director_port": "initial",
+      "director_primary_spatial": "initial",
+      "director_secondary_spatial": "initial",
+      "director_texture": "initial",
+      "director_texture_profiles": {},
+      "director_top_focus": "initial",
+      "director_top_focus_profiles": {},
+      "director_variation": "initial",
+      "director_variation_profiles": {},
+      "dynamic_volume": "initial",
+      "electrode_order": "initial",
+      "first_run_complete": true,
+      "four_phase_acceleration_width_scale": "initial",
+      "four_phase_adaptive_crossover": "initial",
+      "four_phase_crossover_curve": "initial",
+      "four_phase_crossover_sharpness": "initial",
+      "four_phase_crossover_width": "initial",
+      "four_phase_deceleration_width_scale": "initial",
+      "four_phase_directional_trajectory": "initial",
+      "four_phase_fast_crossover_width": "initial",
+      "four_phase_full_depth_capture": "initial",
+      "four_phase_group_delay": "initial",
+      "four_phase_group_delay_ms": "initial",
+      "four_phase_group_delay_transition": "initial",
+      "four_phase_host": "initial",
+      "four_phase_invert": "initial",
+      "four_phase_moving_sequence": "initial",
+      "four_phase_moving_sequence_depth": "initial",
+      "four_phase_moving_sequence_width": "initial",
+      "four_phase_port": "initial",
+      "four_phase_presets": {
+        "B": {
+          "old": 1
+        }
+      },
+      "four_phase_return_depth": "initial",
+      "four_phase_reversal_emphasis": "initial",
+      "four_phase_reversal_strength": "initial",
+      "four_phase_reversal_window": "initial",
+      "four_phase_reverse_curve": "initial",
+      "four_phase_reverse_sharpness": "initial",
+      "four_phase_reverse_width_scale": "initial",
+      "four_phase_slow_crossover_width": "initial",
+      "four_phase_spatial_blend": "initial",
+      "four_phase_spatial_curve": "initial",
+      "four_phase_spatial_model": "initial",
+      "four_phase_spread_softness": "initial",
+      "four_phase_stroke_phase_texture": "initial",
+      "four_phase_tip_retention": "initial",
+      "four_phase_volume_ceiling": "initial",
+      "four_phase_volume_cycle": "initial",
+      "four_phase_volume_headroom": "initial",
+      "four_phase_volume_modulation": "initial",
+      "frequency_max": "initial",
+      "frequency_min": "initial",
+      "frequency_ramp_level": "initial",
+      "frequency_ratio": "initial",
+      "howl_balance_a": "initial",
+      "howl_balance_b": "initial",
+      "howl_boost": "initial",
+      "howl_freq_max": "initial",
+      "howl_freq_min": "initial",
+      "howl_pan": "initial",
+      "howl_position_strength": "initial",
+      "howl_pulse": "initial",
+      "howl_scaling": "initial",
+      "howl_sigma": "initial",
+      "howl_thump": "initial",
+      "howl_width": "initial",
+      "jitter_amplitude": "initial",
+      "jitter_cycle_seconds": "initial",
+      "jitter_enabled": "initial",
+      "lookahead": "initial",
+      "match_spatial_intensity": "initial",
+      "mfp_host": "initial",
+      "mfp_launch_target": "initial",
+      "mfp_port": "initial",
+      "minimum_radius": "initial",
+      "mode": "initial",
+      "modifier_enabled": "initial",
+      "modifier_position_bias": "initial",
+      "modifier_smoothing": "initial",
+      "modifier_stroke_range": "initial",
+      "modifier_tempo_duration_seconds": "initial",
+      "modifier_tempo_scale": "initial",
+      "modifier_transition_seconds": "initial",
+      "motion_falling_volume_multiplier": "initial",
+      "motion_rising_volume_multiplier": "initial",
+      "parameter_response_curves": {
+        "frequency": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "primary_volume": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "prostate_volume": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "pulse_frequency": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "pulse_rise_time": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "pulse_width": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        }
+      },
+      "parameter_response_profiles": {},
+      "preset_a_name": "initial",
+      "preset_b_name": "initial",
+      "preset_transition_seconds": "initial",
+      "prostate_arc_depth": "initial",
+      "prostate_host": "initial",
+      "prostate_launch_target": "initial",
+      "prostate_narrow_ratio": "initial",
+      "prostate_phase_degrees": "initial",
+      "prostate_phase_step": "initial",
+      "prostate_port": "initial",
+      "prostate_rest_level": "initial",
+      "prostate_threshold": "initial",
+      "prostate_volume_multiplier": "initial",
+      "pulse_frequency_max": "initial",
+      "pulse_frequency_min": "initial",
+      "pulse_frequency_ratio": "initial",
+      "pulse_rise_max": "initial",
+      "pulse_rise_min": "initial",
+      "pulse_rise_ratio": "initial",
+      "pulse_width_max": "initial",
+      "pulse_width_min": "initial",
+      "pulse_width_ratio": "initial",
+      "rate": "initial",
+      "restim_host": "initial",
+      "restim_launch_target": "initial",
+      "restim_port": "initial",
+      "send_frequency": "initial",
+      "send_pulse_frequency": "initial",
+      "send_pulse_rise": "initial",
+      "send_pulse_width": "initial",
+      "spatial_gain_ramp_percent_per_second": "initial",
+      "speed_linked_variation": "initial",
+      "speed_threshold": "initial",
+      "timeline_auto_load_script": "initial",
+      "timeline_clock_source": "initial",
+      "timeline_media_host": "initial",
+      "timeline_mpc_port": "initial",
+      "timeline_script_libraries": "initial",
+      "timeline_vlc_password": "initial",
+      "timeline_vlc_port": "initial",
+      "top_focus_nominal_ceiling": "initial",
+      "top_focus_strength": "initial",
+      "top_spatial_gain_max_percent": "initial",
+      "top_spatial_gain_min_percent": "initial",
+      "top_spatial_gain_step_percent": "initial",
+      "variation_fade_seconds": "initial",
+      "variation_full_speed_percent": "initial",
+      "variety_electrode_morph": "initial",
+      "variety_electrode_morph_cycle": "initial",
+      "variety_electrode_morph_transition_seconds": "initial",
+      "variety_enabled": "initial",
+      "variety_frequency": "initial",
+      "variety_frequency_cycle": "initial",
+      "variety_phase": "initial",
+      "variety_phase_cycle": "initial",
+      "variety_pulse_frequency": "initial",
+      "variety_pulse_frequency_cycle": "initial",
+      "variety_pulse_rise": "initial",
+      "variety_pulse_rise_cycle": "initial",
+      "variety_pulse_width": "initial",
+      "variety_pulse_width_cycle": "initial",
+      "volume": "initial",
+      "volume_ramp_up": "initial",
+      "volume_ratio": "initial",
+      "volume_response_max": "initial",
+      "volume_response_min": "initial",
+      "volume_rest_level": "initial"
+    }
+  },
+  "legacy": {
+    "first_run": true,
+    "saved": {
+      "active_custom_profile": null,
+      "authored_axis_routes": [],
+      "authored_routing_mode": "initial",
+      "auto_start_mfp": "initial",
+      "auto_start_prostate": "initial",
+      "auto_start_restim": "initial",
+      "automatic_ready": "initial",
+      "bottom_focus_strength": "initial",
+      "bottom_spatial_gain_max_percent": "initial",
+      "bottom_spatial_gain_min_percent": "initial",
+      "bottom_spatial_gain_step_percent": "initial",
+      "controller_enabled": "initial",
+      "controller_fine_step": "initial",
+      "custom_spatial_curves": [
+        {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              100.0
+            ],
+            [
+              16.667,
+              100.0
+            ],
+            [
+              33.333,
+              41.026
+            ],
+            [
+              50,
+              61.538
+            ],
+            [
+              66.667,
+              41.026
+            ],
+            [
+              83.333,
+              73.075
+            ],
+            [
+              100,
+              41.026
+            ]
+          ]
+        },
+        {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              17.949
+            ],
+            [
+              16.667,
+              88.464
+            ],
+            [
+              33.333,
+              100.0
+            ],
+            [
+              50,
+              100.0
+            ],
+            [
+              66.667,
+              41.026
+            ],
+            [
+              83.333,
+              73.075
+            ],
+            [
+              100,
+              41.026
+            ]
+          ]
+        },
+        {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              41.026
+            ],
+            [
+              16.667,
+              50.001
+            ],
+            [
+              33.333,
+              17.949
+            ],
+            [
+              50,
+              88.462
+            ],
+            [
+              66.667,
+              100.0
+            ],
+            [
+              83.333,
+              100.0
+            ],
+            [
+              100,
+              17.949
+            ]
+          ]
+        },
+        {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              41.026
+            ],
+            [
+              16.667,
+              61.54
+            ],
+            [
+              33.333,
+              41.026
+            ],
+            [
+              50,
+              50.0
+            ],
+            [
+              66.667,
+              17.949
+            ],
+            [
+              83.333,
+              99.997
+            ],
+            [
+              100,
+              100.0
+            ]
+          ]
+        }
+      ],
+      "custom_spatial_profiles": {},
+      "direct_controller_enabled": "initial",
+      "direction_probability": "initial",
+      "director_bottom_focus": "initial",
+      "director_bottom_focus_profiles": {},
+      "director_enabled": "initial",
+      "director_events_enabled": "initial",
+      "director_host": "initial",
+      "director_port": "initial",
+      "director_primary_spatial": "initial",
+      "director_secondary_spatial": "initial",
+      "director_texture": "initial",
+      "director_texture_profiles": {},
+      "director_top_focus": "initial",
+      "director_top_focus_profiles": {},
+      "director_variation": "initial",
+      "director_variation_profiles": {},
+      "dynamic_volume": "initial",
+      "electrode_order": "initial",
+      "first_run_complete": true,
+      "four_phase_acceleration_width_scale": "initial",
+      "four_phase_adaptive_crossover": "initial",
+      "four_phase_crossover_curve": "initial",
+      "four_phase_crossover_sharpness": "initial",
+      "four_phase_crossover_width": "initial",
+      "four_phase_deceleration_width_scale": "initial",
+      "four_phase_directional_trajectory": "initial",
+      "four_phase_fast_crossover_width": "initial",
+      "four_phase_full_depth_capture": "initial",
+      "four_phase_group_delay": "initial",
+      "four_phase_group_delay_ms": "initial",
+      "four_phase_group_delay_transition": "initial",
+      "four_phase_host": "initial",
+      "four_phase_invert": "initial",
+      "four_phase_moving_sequence": "initial",
+      "four_phase_moving_sequence_depth": "initial",
+      "four_phase_moving_sequence_width": "initial",
+      "four_phase_port": "initial",
+      "four_phase_presets": {
+        "B": {
+          "old": 1
+        }
+      },
+      "four_phase_return_depth": "initial",
+      "four_phase_reversal_emphasis": "initial",
+      "four_phase_reversal_strength": "initial",
+      "four_phase_reversal_window": "initial",
+      "four_phase_reverse_curve": "initial",
+      "four_phase_reverse_sharpness": "initial",
+      "four_phase_reverse_width_scale": "initial",
+      "four_phase_slow_crossover_width": "initial",
+      "four_phase_spatial_blend": "initial",
+      "four_phase_spatial_curve": "initial",
+      "four_phase_spatial_model": "initial",
+      "four_phase_spread_softness": "initial",
+      "four_phase_stroke_phase_texture": "initial",
+      "four_phase_tip_retention": "initial",
+      "four_phase_volume_ceiling": "initial",
+      "four_phase_volume_cycle": "initial",
+      "four_phase_volume_headroom": "initial",
+      "four_phase_volume_modulation": "initial",
+      "frequency_max": "initial",
+      "frequency_min": "initial",
+      "frequency_ramp_level": "initial",
+      "frequency_ratio": "initial",
+      "howl_balance_a": "initial",
+      "howl_balance_b": "initial",
+      "howl_boost": "initial",
+      "howl_freq_max": "initial",
+      "howl_freq_min": "initial",
+      "howl_pan": "initial",
+      "howl_position_strength": "initial",
+      "howl_pulse": "initial",
+      "howl_scaling": "initial",
+      "howl_sigma": "initial",
+      "howl_thump": "initial",
+      "howl_width": "initial",
+      "jitter_amplitude": "initial",
+      "jitter_cycle_seconds": "initial",
+      "jitter_enabled": "initial",
+      "lookahead": "initial",
+      "match_spatial_intensity": "initial",
+      "mfp_host": "initial",
+      "mfp_launch_target": "initial",
+      "mfp_port": "initial",
+      "minimum_radius": "initial",
+      "mode": "initial",
+      "modifier_enabled": "initial",
+      "modifier_position_bias": "initial",
+      "modifier_smoothing": "initial",
+      "modifier_stroke_range": 0.7,
+      "modifier_tempo_duration_seconds": "initial",
+      "modifier_tempo_scale": "initial",
+      "modifier_transition_seconds": "initial",
+      "motion_falling_volume_multiplier": "initial",
+      "motion_rising_volume_multiplier": "initial",
+      "parameter_response_curves": {
+        "frequency": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "primary_volume": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "prostate_volume": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "pulse_frequency": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "pulse_rise_time": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "pulse_width": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        }
+      },
+      "parameter_response_profiles": {
+        "Old": {
+          "curves": {
+            "frequency": {
+              "interpolation": "linear",
+              "points": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  100,
+                  100
+                ]
+              ]
+            },
+            "primary_volume": {
+              "interpolation": "linear",
+              "points": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  100,
+                  100
+                ]
+              ]
+            },
+            "prostate_volume": {
+              "interpolation": "linear",
+              "points": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  100,
+                  100
+                ]
+              ]
+            },
+            "pulse_frequency": {
+              "interpolation": "linear",
+              "points": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  100,
+                  100
+                ]
+              ]
+            },
+            "pulse_rise_time": {
+              "interpolation": "linear",
+              "points": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  100,
+                  100
+                ]
+              ]
+            },
+            "pulse_width": {
+              "interpolation": "linear",
+              "points": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  100,
+                  100
+                ]
+              ]
+            }
+          },
+          "description": "legacy four curves"
+        }
+      },
+      "preset_a_name": "initial",
+      "preset_b_name": "initial",
+      "preset_transition_seconds": "initial",
+      "prostate_arc_depth": "initial",
+      "prostate_host": "initial",
+      "prostate_launch_target": "initial",
+      "prostate_narrow_ratio": "initial",
+      "prostate_phase_degrees": "initial",
+      "prostate_phase_step": "initial",
+      "prostate_port": "initial",
+      "prostate_rest_level": "initial",
+      "prostate_threshold": "initial",
+      "prostate_volume_multiplier": "initial",
+      "pulse_frequency_max": "initial",
+      "pulse_frequency_min": "initial",
+      "pulse_frequency_ratio": "initial",
+      "pulse_rise_max": "initial",
+      "pulse_rise_min": "initial",
+      "pulse_rise_ratio": "initial",
+      "pulse_width_max": "initial",
+      "pulse_width_min": "initial",
+      "pulse_width_ratio": "initial",
+      "rate": "initial",
+      "restim_host": "initial",
+      "restim_launch_target": "initial",
+      "restim_port": "initial",
+      "send_frequency": "initial",
+      "send_pulse_frequency": "initial",
+      "send_pulse_rise": "initial",
+      "send_pulse_width": "initial",
+      "spatial_gain_ramp_percent_per_second": "initial",
+      "speed_linked_variation": "initial",
+      "speed_threshold": "initial",
+      "timeline_auto_load_script": "initial",
+      "timeline_clock_source": "initial",
+      "timeline_media_host": "initial",
+      "timeline_mpc_port": "initial",
+      "timeline_script_libraries": "initial",
+      "timeline_vlc_password": "initial",
+      "timeline_vlc_port": "initial",
+      "top_focus_nominal_ceiling": "initial",
+      "top_focus_strength": "initial",
+      "top_spatial_gain_max_percent": "initial",
+      "top_spatial_gain_min_percent": "initial",
+      "top_spatial_gain_step_percent": "initial",
+      "variation_fade_seconds": "initial",
+      "variation_full_speed_percent": "initial",
+      "variety_electrode_morph": "initial",
+      "variety_electrode_morph_cycle": "initial",
+      "variety_electrode_morph_transition_seconds": "initial",
+      "variety_enabled": "initial",
+      "variety_frequency": "initial",
+      "variety_frequency_cycle": "initial",
+      "variety_phase": "initial",
+      "variety_phase_cycle": "initial",
+      "variety_pulse_frequency": "initial",
+      "variety_pulse_frequency_cycle": "initial",
+      "variety_pulse_rise": "initial",
+      "variety_pulse_rise_cycle": "initial",
+      "variety_pulse_width": "initial",
+      "variety_pulse_width_cycle": "initial",
+      "volume": "initial",
+      "volume_ramp_up": "initial",
+      "volume_ratio": "initial",
+      "volume_response_max": "initial",
+      "volume_response_min": "initial",
+      "volume_rest_level": "initial"
+    }
+  },
+  "unknown_fields": {
+    "first_run": false,
+    "saved": {
+      "active_custom_profile": null,
+      "authored_axis_routes": [],
+      "authored_routing_mode": "initial",
+      "auto_start_mfp": "initial",
+      "auto_start_prostate": "initial",
+      "auto_start_restim": "initial",
+      "automatic_ready": "initial",
+      "bottom_focus_strength": "initial",
+      "bottom_spatial_gain_max_percent": "initial",
+      "bottom_spatial_gain_min_percent": "initial",
+      "bottom_spatial_gain_step_percent": "initial",
+      "controller_enabled": "initial",
+      "controller_fine_step": "initial",
+      "custom_spatial_curves": [
+        {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              100.0
+            ],
+            [
+              16.667,
+              100.0
+            ],
+            [
+              33.333,
+              41.026
+            ],
+            [
+              50,
+              61.538
+            ],
+            [
+              66.667,
+              41.026
+            ],
+            [
+              83.333,
+              73.075
+            ],
+            [
+              100,
+              41.026
+            ]
+          ]
+        },
+        {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              17.949
+            ],
+            [
+              16.667,
+              88.464
+            ],
+            [
+              33.333,
+              100.0
+            ],
+            [
+              50,
+              100.0
+            ],
+            [
+              66.667,
+              41.026
+            ],
+            [
+              83.333,
+              73.075
+            ],
+            [
+              100,
+              41.026
+            ]
+          ]
+        },
+        {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              41.026
+            ],
+            [
+              16.667,
+              50.001
+            ],
+            [
+              33.333,
+              17.949
+            ],
+            [
+              50,
+              88.462
+            ],
+            [
+              66.667,
+              100.0
+            ],
+            [
+              83.333,
+              100.0
+            ],
+            [
+              100,
+              17.949
+            ]
+          ]
+        },
+        {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              41.026
+            ],
+            [
+              16.667,
+              61.54
+            ],
+            [
+              33.333,
+              41.026
+            ],
+            [
+              50,
+              50.0
+            ],
+            [
+              66.667,
+              17.949
+            ],
+            [
+              83.333,
+              99.997
+            ],
+            [
+              100,
+              100.0
+            ]
+          ]
+        }
+      ],
+      "custom_spatial_profiles": {},
+      "direct_controller_enabled": "initial",
+      "direction_probability": "initial",
+      "director_bottom_focus": "initial",
+      "director_bottom_focus_profiles": {},
+      "director_enabled": "initial",
+      "director_events_enabled": "initial",
+      "director_host": "initial",
+      "director_port": "initial",
+      "director_primary_spatial": "initial",
+      "director_secondary_spatial": "initial",
+      "director_texture": "initial",
+      "director_texture_profiles": {},
+      "director_top_focus": "initial",
+      "director_top_focus_profiles": {},
+      "director_variation": "initial",
+      "director_variation_profiles": {},
+      "dynamic_volume": "initial",
+      "electrode_order": "initial",
+      "first_run_complete": true,
+      "four_phase_acceleration_width_scale": "initial",
+      "four_phase_adaptive_crossover": "initial",
+      "four_phase_crossover_curve": "initial",
+      "four_phase_crossover_sharpness": "initial",
+      "four_phase_crossover_width": "initial",
+      "four_phase_deceleration_width_scale": "initial",
+      "four_phase_directional_trajectory": "initial",
+      "four_phase_fast_crossover_width": "initial",
+      "four_phase_full_depth_capture": "initial",
+      "four_phase_group_delay": "initial",
+      "four_phase_group_delay_ms": "initial",
+      "four_phase_group_delay_transition": "initial",
+      "four_phase_host": "initial",
+      "four_phase_invert": "initial",
+      "four_phase_moving_sequence": "initial",
+      "four_phase_moving_sequence_depth": "initial",
+      "four_phase_moving_sequence_width": "initial",
+      "four_phase_port": "initial",
+      "four_phase_presets": {
+        "B": {
+          "old": 1
+        }
+      },
+      "four_phase_return_depth": "initial",
+      "four_phase_reversal_emphasis": "initial",
+      "four_phase_reversal_strength": "initial",
+      "four_phase_reversal_window": "initial",
+      "four_phase_reverse_curve": "initial",
+      "four_phase_reverse_sharpness": "initial",
+      "four_phase_reverse_width_scale": "initial",
+      "four_phase_slow_crossover_width": "initial",
+      "four_phase_spatial_blend": "initial",
+      "four_phase_spatial_curve": "initial",
+      "four_phase_spatial_model": "initial",
+      "four_phase_spread_softness": "initial",
+      "four_phase_stroke_phase_texture": "initial",
+      "four_phase_tip_retention": "initial",
+      "four_phase_volume_ceiling": "initial",
+      "four_phase_volume_cycle": "initial",
+      "four_phase_volume_headroom": "initial",
+      "four_phase_volume_modulation": "initial",
+      "frequency_max": "initial",
+      "frequency_min": "initial",
+      "frequency_ramp_level": "initial",
+      "frequency_ratio": "initial",
+      "howl_balance_a": "initial",
+      "howl_balance_b": "initial",
+      "howl_boost": "initial",
+      "howl_freq_max": "initial",
+      "howl_freq_min": "initial",
+      "howl_pan": "initial",
+      "howl_position_strength": "initial",
+      "howl_pulse": "initial",
+      "howl_scaling": "initial",
+      "howl_sigma": "initial",
+      "howl_thump": "initial",
+      "howl_width": "initial",
+      "jitter_amplitude": "initial",
+      "jitter_cycle_seconds": "initial",
+      "jitter_enabled": "initial",
+      "lookahead": "initial",
+      "match_spatial_intensity": "initial",
+      "mfp_host": "initial",
+      "mfp_launch_target": "initial",
+      "mfp_port": "initial",
+      "minimum_radius": "initial",
+      "mode": "initial",
+      "modifier_enabled": "initial",
+      "modifier_position_bias": "initial",
+      "modifier_smoothing": "initial",
+      "modifier_stroke_range": "initial",
+      "modifier_tempo_duration_seconds": "initial",
+      "modifier_tempo_scale": "initial",
+      "modifier_transition_seconds": "initial",
+      "motion_falling_volume_multiplier": "initial",
+      "motion_rising_volume_multiplier": "initial",
+      "parameter_response_curves": {
+        "frequency": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "primary_volume": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "prostate_volume": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "pulse_frequency": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "pulse_rise_time": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        },
+        "pulse_width": {
+          "interpolation": "linear",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              100
+            ]
+          ]
+        }
+      },
+      "parameter_response_profiles": {},
+      "preset_a_name": "initial",
+      "preset_b_name": "initial",
+      "preset_transition_seconds": "initial",
+      "prostate_arc_depth": "initial",
+      "prostate_host": "initial",
+      "prostate_launch_target": "initial",
+      "prostate_narrow_ratio": "initial",
+      "prostate_phase_degrees": "initial",
+      "prostate_phase_step": "initial",
+      "prostate_port": "initial",
+      "prostate_rest_level": "initial",
+      "prostate_threshold": "initial",
+      "prostate_volume_multiplier": "initial",
+      "pulse_frequency_max": "initial",
+      "pulse_frequency_min": "initial",
+      "pulse_frequency_ratio": "initial",
+      "pulse_rise_max": "initial",
+      "pulse_rise_min": "initial",
+      "pulse_rise_ratio": "initial",
+      "pulse_width_max": "initial",
+      "pulse_width_min": "initial",
+      "pulse_width_ratio": "initial",
+      "rate": "initial",
+      "restim_host": "initial",
+      "restim_launch_target": "initial",
+      "restim_port": "initial",
+      "send_frequency": "initial",
+      "send_pulse_frequency": "initial",
+      "send_pulse_rise": "initial",
+      "send_pulse_width": "initial",
+      "spatial_gain_ramp_percent_per_second": "initial",
+      "speed_linked_variation": "initial",
+      "speed_threshold": "initial",
+      "timeline_auto_load_script": "initial",
+      "timeline_clock_source": "initial",
+      "timeline_media_host": "initial",
+      "timeline_mpc_port": "initial",
+      "timeline_script_libraries": "initial",
+      "timeline_vlc_password": "initial",
+      "timeline_vlc_port": "initial",
+      "top_focus_nominal_ceiling": "initial",
+      "top_focus_strength": "initial",
+      "top_spatial_gain_max_percent": "initial",
+      "top_spatial_gain_min_percent": "initial",
+      "top_spatial_gain_step_percent": "initial",
+      "variation_fade_seconds": "initial",
+      "variation_full_speed_percent": "initial",
+      "variety_electrode_morph": "initial",
+      "variety_electrode_morph_cycle": "initial",
+      "variety_electrode_morph_transition_seconds": "initial",
+      "variety_enabled": "initial",
+      "variety_frequency": "initial",
+      "variety_frequency_cycle": "initial",
+      "variety_phase": "initial",
+      "variety_phase_cycle": "initial",
+      "variety_pulse_frequency": "initial",
+      "variety_pulse_frequency_cycle": "initial",
+      "variety_pulse_rise": "initial",
+      "variety_pulse_rise_cycle": "initial",
+      "variety_pulse_width": "initial",
+      "variety_pulse_width_cycle": "initial",
+      "volume": "initial",
+      "volume_ramp_up": "initial",
+      "volume_ratio": "initial",
+      "volume_response_max": "initial",
+      "volume_response_min": "initial",
+      "volume_rest_level": "initial"
+    }
+  }
+}

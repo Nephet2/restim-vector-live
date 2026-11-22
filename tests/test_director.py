@@ -194,3 +194,33 @@ def test_director_server_post_modifier_restore():
 def test_director_server_post_modifier_stroke_range():
     payload = _post_round_trip("/v1/modifier/stroke-range", {"action": "narrower"})
     assert payload["action"] == "narrower"
+
+
+def test_director_server_post_custom_event():
+    payload = _post_round_trip(
+        "/v1/event/trigger", {"event": "mcb_tease", "duration_seconds": 8})
+    assert payload["event"] == "mcb_tease"
+
+
+def test_director_server_post_cancel_events():
+    assert _post_round_trip("/v1/event/cancel", {})["ok"] is True
+
+
+def test_dispatch_skips_expired_writes_and_runs_current_resume():
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    from vector1a.app import VectorApp
+    from vector1a.director import DirectorRequest
+
+    bridge = DirectorBridge()
+    for path in ("/v1/resume", "/v1/preset", "/v1/vacuglide"):
+        request = DirectorRequest("POST", path, {})
+        request.expired.set()
+        bridge._requests.put(request)
+    live = DirectorRequest("POST", "/v1/resume", {})
+    bridge._requests.put(live)
+    app = SimpleNamespace(director_bridge=bridge, resume=Mock())
+    VectorApp._drain_director_requests(app)
+    app.resume.assert_called_once_with()
+    assert live.completed.is_set()
+    assert live.status == 200

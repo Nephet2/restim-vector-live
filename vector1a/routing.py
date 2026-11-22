@@ -58,6 +58,11 @@ class AuthoredAxisRouter:
             while len(track) > 1 and track[1].received_at < cutoff:
                 track.popleft()
 
+    def clear_history(self) -> None:
+        with self._lock:
+            self._tracks.clear()
+            self._last_seen.clear()
+
     def set_enabled(self, axis: str, enabled: bool) -> None:
         axis = axis.upper()
         with self._lock:

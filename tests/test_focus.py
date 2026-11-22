@@ -1,4 +1,5 @@
-from vector1a.focus import apply_top_focus, top_focus_weights, apply_bottom_focus, bottom_focus_window
+from vector1a.focus import (BottomFocusTransition, apply_top_focus, top_focus_weights,
+                            apply_bottom_focus, apply_bottom_focus_window, bottom_focus_window)
 
 
 def test_top_focus_preserves_neutral():
@@ -32,6 +33,27 @@ def test_prostate_focus_remaps_alpha_to_upper_half():
 def test_bottom_focus_strength_can_fade_to_original():
     assert apply_bottom_focus(.25, "Prostate Focus", strength=0.0) == .25
     assert bottom_focus_window("Anal Focus") == (.25,.75)
+
+
+def test_bottom_focus_transition_preserves_continuity_then_reaches_target():
+    transition = BottomFocusTransition("Bottom Full", now=10.0)
+    before = apply_bottom_focus_window(0.1, transition.window(now=10.0))
+    transition.select("Prostate Focus", duration=1.0, now=10.0)
+    at_change = apply_bottom_focus_window(0.1, transition.window(now=10.0))
+    halfway = apply_bottom_focus_window(0.1, transition.window(now=10.5))
+    complete = apply_bottom_focus_window(0.1, transition.window(now=11.0))
+    assert at_change == before
+    assert before < halfway < complete
+    assert complete == apply_bottom_focus(0.1, "Prostate Focus")
+
+
+def test_bottom_focus_transition_retargets_from_current_effective_window():
+    transition = BottomFocusTransition("Bottom Full", now=20.0)
+    transition.select("Prostate Focus", duration=1.0, now=20.0)
+    current = transition.window(now=20.4)
+    transition.select("Perineum Focus", duration=1.0, now=20.4)
+    assert transition.window(now=20.4) == current
+    assert transition.window(now=21.4) == bottom_focus_window("Perineum Focus")
 
 
 def test_top_focus_150_percent_exaggerates_peak_without_clipping_at_default_headroom():
