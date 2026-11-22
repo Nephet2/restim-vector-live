@@ -1,10 +1,10 @@
 # Handy interface
 
-Open Vector, then choose **Session → Handy Interface**. Mode changes and script-library changes can resume automatically. An explicit pause cancels a pending handoff.
+Launch the existing desktop Vector shortcut, then Session → Handy Interface. Fully close/reopen Vector once after source updates. After that, mode changes and script-library changes can resume automatically without restarting Vector or pressing Start again. An explicit operator pause cancels a pending handoff.
 
 ## Connection
 
-Put Handy in Wi-Fi Online mode. Enter the short device key in Connection key and the Application Key alone in Application key / token. Do not concatenate the Application ID and Key. An account sign-in token is a different credential. Credentials are stored only if Remember keys is selected, using Windows current-user DPAPI. They are excluded from the release ZIP.
+Put Handy in Wi-Fi Online mode. Enter the short device key in Connection key and the Application Key alone in Application key / token. Do not concatenate the Application ID and Key. An account sign-in token is a different credential. Credentials are stored only if Remember keys is selected, using Windows current-user DPAPI. They are excluded from the patch ZIP.
 
 Application keys use API v3. Client API tokens can negotiate Bearer authentication on a read-only connected probe after a 401; motion requests are never replayed for negotiation. Connection-key-only API v2 permits native Manual; timed firmware-4 playback requires API v3.
 
@@ -36,7 +36,7 @@ Vector STOP includes Handy. Closing its window pauses output. Native motor movem
 
 ## Next stage and recovery
 
-See OUTPUT-CONTROLS-DESIGN.md for the planned linked Handy/VacuGlide intensity panel. VacuGlide runtime behaviour is unchanged by this update. The ZIP is a source patch for this existing Vector88 folder, not a standalone program. The desktop shortcut's source is updated locally. Earlier source checkpoints are under backups, and the release ZIP is versioned separately.
+See OUTPUT-CONTROLS-DESIGN.md for the planned linked Handy/VacuGlide intensity panel. VacuGlide runtime behaviour is unchanged by this update. The ZIP is a source patch for this existing Vector88 folder, not a standalone program. The desktop shortcut's source is updated locally. Earlier source checkpoints are under backups, and the patch ZIP is versioned separately.
 
 ## Device stroke window and streaming regression update
 

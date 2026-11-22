@@ -335,3 +335,4 @@ class MfpFollower:
                     self._next_pulse = now + interval
         except ValueError as exc:
             self.stop(str(exc).rstrip("."))
+

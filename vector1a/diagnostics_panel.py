@@ -2,6 +2,8 @@
 import tkinter as tk
 from tkinter import ttk
 
+from .signal_quality_panel import SignalQualityPanel
+
 
 def age(value):
     return 'never' if value is None else f'{max(0.,float(value)):.2f} s ago'
@@ -23,6 +25,9 @@ class DiagnosticsPanel:
         self.samples=ttk.Frame(self.notebook,padding=8)
         self.notebook.add(self.overview,text='Signal path')
         self.notebook.add(self.samples,text='Calculated samples')
+        quality = ttk.Frame(self.notebook, padding=8)
+        self.notebook.add(quality, text='Signal Quality')
+        self.signal_quality = SignalQualityPanel(quality, app.restim, app.prostate_restim)
         for col in (0,1):self.overview.columnconfigure(col,weight=1,uniform='stages')
         self.stage_vars={name:tk.StringVar(value='Waiting for refresh') for name in ('source','primary','prostate','primary_address','prostate_address')}
         def card(title,row,col):
@@ -70,6 +75,7 @@ class DiagnosticsPanel:
                   wraplength=820,justify='left',foreground='#555').grid(row=9,column=0,columnspan=4,sticky='w',pady=8)
 
     def refresh(self):
+        self.signal_quality.refresh()
         app=self.app;source=app.listener.health()
         fresh=source['last_l0_age']
         incoming='No MFP L0 received' if fresh is None else f"Last MFP L0: {age(fresh)}; authored position: {app.input_pipeline.latest_authored_l0:.4f}"

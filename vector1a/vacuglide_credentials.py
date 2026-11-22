@@ -60,3 +60,4 @@ def save_token(token):
 
 def forget_token():
     token_path().unlink(missing_ok=True)
+

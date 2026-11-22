@@ -204,3 +204,4 @@ class LivePlayback:
             self.phase = "failed"
             self.detail = receipt.get("error") or "Stop unconfirmed. Use the VacuGlide's physical power control."
             self.needs_stop = True
+

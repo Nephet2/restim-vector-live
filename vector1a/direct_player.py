@@ -7,6 +7,7 @@ import socket
 import struct
 import threading
 import time
+from urllib.parse import urlsplit
 
 from .media_clock import MediaSnapshot, _file_uri_to_path, find_matching_funscript, local_smb_path, poll_mpc
 from .timeline import FunscriptTimeline
@@ -118,6 +119,9 @@ class DirectPlayerInput:
     def _load_script(self, resource):
         resource = resource.strip().removeprefix('"').removesuffix('"')
         if self.source == DEOVR and resource.lower().startswith(("http://", "https://")):
+            host = (urlsplit(resource).hostname or "").rstrip(".")
+            if host == "sexlikereal.com" or host.endswith(".sexlikereal.com"):
+                return None, "SLR stream: select MultiFunPlayer, or load a local funscript"
             return None, "Online video; load a local funscript"
         if resource.lower().startswith("smb://"):
             path = local_smb_path(resource)

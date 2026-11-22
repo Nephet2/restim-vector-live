@@ -4,12 +4,33 @@ import socket
 import threading
 import time
 import unittest
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 from vector1a.engine import VectorEngine
 from vector1a.network import LatestFrameDispatcher, MFPListener, ReStimWebSocketClient
 
 
 class NetworkTests(unittest.TestCase):
+    def test_tcode_history_copies_completed_payloads_only(self):
+        client = ReStimWebSocketClient(lambda _: None)
+        self.addCleanup(client.close)
+        client._socket = Mock()
+        client._frame = lambda message: message
+        client._needs_neutral = True
+        client.suppressed_axes = {"P0"}
+        client.pressure_control = SimpleNamespace(
+            enabled=True, tcode=lambda message: message.replace("V05000", "V02500"))
+        self.assertTrue(client._send_message("V05000 P07000 P12500", "V00000"))
+        written = [call.args[0] for call in client._socket.sendall.call_args_list]
+        self.assertEqual(written, ["V00000", "V02500 P12500"])
+        history = client.tcode_history()
+        self.assertEqual([message for _, message in history], written)
+        history.clear()
+        client._socket.sendall.side_effect = OSError("write failed")
+        self.assertFalse(client._send_message("V07000", "V00000"))
+        self.assertEqual([message for _, message in client.tcode_history()], written)
+
     def test_blocked_restim_lane_cannot_starve_vector_engine(self):
         entered = threading.Event()
         release = threading.Event()

@@ -288,16 +288,21 @@ class QueueTests(unittest.TestCase):
         combined = ((1.0 - 0.6) + (1.0 - 0.75)) / 2.0
         self.assertAlmostEqual(engine._calculate_pulse_rise_time(75.0), combined * 0.8)
 
-    def test_pulse_width_limits_inverted_l0_then_blends_speed(self):
+    def test_pulse_width_blends_speed_and_inverted_l0_then_scales_range(self):
         engine = VectorEngine(lambda sample: None, clock=lambda: 0.0)
         engine.pulse_width_ratio = 3.0
         engine.pulse_width_min = 0.1
         engine.pulse_width_max = 0.45
         engine.volume_ramp_up_seconds = 0.0
         engine._last_input_time = 1.0
-        # inverted L0=.8, limited to .45
-        expected = 0.45  # raw blend is .55, hard-clamped to configured maximum
+        drive = (0.60 * 2 + 0.80) / 3
+        expected = 0.10 + drive * (0.45 - 0.10)
         self.assertAlmostEqual(engine._calculate_pulse_width(1.0, 60.0, 0.2), expected)
+        engine.pulse_width_max = 0.30
+        self.assertAlmostEqual(engine._calculate_pulse_width(1.0, 60.0, 0.2),
+                               0.10 + drive * (0.30 - 0.10))
+        self.assertLess(engine._calculate_pulse_width(1.0, 60.0, 0.2),
+                        engine._calculate_pulse_width(1.0, 80.0, 0.2))
 
     def test_pulse_width_never_leaves_controller_range(self):
         engine = VectorEngine(lambda sample: None, clock=lambda: 0.0)

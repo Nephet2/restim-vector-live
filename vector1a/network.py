@@ -501,6 +501,14 @@ class ReStimClient(_ReconnectClient):
 
 class ReStimWebSocketClient(_ReconnectClient):
     """Dependency-free RFC 6455 client for ReStim's /tcode endpoint."""
+    def __init__(self, status: Callable[[str], None]) -> None:
+        self._tcode_history: deque[tuple[float, str]] = deque(maxlen=4096)
+        super().__init__(status)
+
+    def tcode_history(self) -> deque[tuple[float, str]]:
+        """Copy completed writes without waiting for the transport lock."""
+        return self._tcode_history.copy()
+
     def _receive_available(self):
         data = self._socket.recv(4096)
         if not data:
@@ -579,6 +587,7 @@ class ReStimWebSocketClient(_ReconnectClient):
             try:
                 if getattr(self, "_needs_neutral", False):
                     self._socket.sendall(self._frame(neutral))
+                    self._tcode_history.append((time.monotonic(), neutral))
                     self._needs_neutral = False
                     self.status("Recovered safely; output resumed")
                 if pressure is not None and pressure.enabled:
@@ -587,6 +596,7 @@ class ReStimWebSocketClient(_ReconnectClient):
                     message = pressure.tcode(message)
                 self._socket.sendall(self._frame(message))
                 self._sent()
+                self._tcode_history.append((self._last_send, message))
                 return True
             except OSError as exc:
                 self._failed(exc)

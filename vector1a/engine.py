@@ -49,6 +49,7 @@ class OutputSample:
     secondary_pulse_width: float | None = None
     keyframe_arc: tuple[float, float] | None = None
     shifted_primary_pulse: tuple[float, ...] | None = None
+    primary_pulse_smoothed: tuple[bool, ...] = ()
 
     @property
     def primary_pulse(self) -> tuple[float, ...]:
@@ -165,6 +166,7 @@ class VectorEngine:
         self._sequence = 0
         self._queue: list[tuple[float, int, OutputSample]] = []
         self._primary_pulse_history: deque[tuple[float, tuple[float, ...]]] = deque()
+        self.pulse_smoothing_seconds = 0.0
         self._primary_pulse_timing = ((0.0, 0.0),) * len(PRIMARY_PULSE_AXES)
         self._primary_pulse_timing_status = ("Off",) * len(PRIMARY_PULSE_AXES)
         self._state = "Stopped"
@@ -209,13 +211,15 @@ class VectorEngine:
                   variation_fade_seconds: float = .75,
                   spatial_curve: str = "Linear",
                   spatial_blend: float = 0.0,
-                  parameter_curves: dict | None = None) -> None:
+                  parameter_curves: dict | None = None,
+                  pulse_smoothing_seconds: float = 0.0) -> None:
         with self._lock:
             if parameter_curves is not None:
                 self.parameter_curves = validate_parameter_curves(parameter_curves)
             mode_changed = mode != self.mode
             self.rate_hz = max(1, min(200, int(rate_hz)))
             self.lookahead_seconds = max(0.05, min(10.0, float(lookahead_seconds)))
+            self.pulse_smoothing_seconds = max(0.0, min(20.0, float(pulse_smoothing_seconds)))
             self.volume = min(1.0, max(0.0, float(volume)))
             self.mode = mode
             self.params = params
@@ -734,7 +738,7 @@ class VectorEngine:
             if history and scheduled_at < history[-1][0]:
                 self._reset_primary_pulse_timing()
             history.append((scheduled_at, sample.primary_pulse))
-            while len(history) > 1 and history[1][0] < scheduled_at - 12.0:
+            while len(history) > 1 and history[1][0] < scheduled_at - 22.0:
                 history.popleft()
 
     def _update_variation_depth(self, at_time: float, speed_percent: float) -> float:
@@ -827,17 +831,47 @@ class VectorEngine:
         self._primary_pulse_timing_status = tuple(
             "Buffering" if any(timing) else "Off" for timing in self._primary_pulse_timing)
 
+    def _smooth_primary_pulse(self, center: float) -> tuple[float, ...] | None:
+        history = self._primary_pulse_history
+        if not self.pulse_smoothing_seconds or not history:
+            return None
+        # Keep the window centered even when the available buffer is shorter.
+        # The raised-cosine weights taper to zero at both ends.
+        radius = min(self.pulse_smoothing_seconds / 2, self.lookahead_seconds,
+                     center - history[0][0], history[-1][0] - center)
+        if radius < 2 / self.rate_hz:
+            return None
+        start = bisect_left(history, (center - radius, ()))
+        totals = [0.0] * len(PRIMARY_PULSE_AXES)
+        weight_total = 0.0
+        for index in range(start, len(history)):
+            at_time, pulse = history[index]
+            if at_time >= center + radius:
+                break
+            weight = 1 + math.cos(math.pi * (at_time - center) / radius)
+            for axis, value in enumerate(pulse):
+                totals[axis] += weight * value
+            weight_total += weight
+        return tuple(total / weight_total for total in totals) if weight_total else None
+
     def _shift_primary_pulse(self, sample: OutputSample, baseline: tuple[float, ...]) -> OutputSample:
         history = self._primary_pulse_history
-        if not history or not any(map(any, self._primary_pulse_timing)):
+        smoothed = self._smooth_primary_pulse(sample.calculated_at)
+        if not history or (smoothed is None and not any(map(any, self._primary_pulse_timing))):
             return sample
         stroke = sample.timing_stroke
         duration = stroke.duration if stroke else 0.
         values = list(sample.primary_pulse)
+        smoothed_axes = [False] * len(PRIMARY_PULSE_AXES)
         statuses = ["Off"] * len(PRIMARY_PULSE_AXES)
         bounds = self.pulse_command_ranges()
         for axis, (offset, phase) in enumerate(self._primary_pulse_timing):
             if not (offset or phase):
+                if smoothed is not None:
+                    value = smoothed[axis] + values[axis] - baseline[axis]
+                    low, high = bounds[axis]
+                    values[axis] = max(low, min(high, value))
+                    smoothed_axes[axis] = True
                 continue
             target = sample.calculated_at - offset - phase * duration
             when = max(history[0][0], min(history[-1][0], target))
@@ -848,21 +882,27 @@ class VectorEngine:
             if phase and duration <= 0:
                 status += " (waiting for stroke end)"
             statuses[axis] = status
-            if abs(when - sample.calculated_at) <= 1e-9:
-                continue
-            index = bisect_left(history, (when, ()))
-            right_time, right_values = history[index]
-            value = right_values[axis]
-            if index and right_time > when:
-                left_time, left_values = history[index - 1]
-                fraction = (when - left_time) / (right_time - left_time)
-                value = left_values[axis] + (value - left_values[axis]) * fraction
+            window = smoothed if when == sample.calculated_at else self._smooth_primary_pulse(when)
+            if window is not None:
+                value = window[axis]
+                smoothed_axes[axis] = True
+            else:
+                if abs(when - sample.calculated_at) <= 1e-9:
+                    continue
+                index = bisect_left(history, (when, ()))
+                right_time, right_values = history[index]
+                value = right_values[axis]
+                if index and right_time > when:
+                    left_time, left_values = history[index - 1]
+                    fraction = (when - left_time) / (right_time - left_time)
+                    value = left_values[axis] + (value - left_values[axis]) * fraction
             # Retain the current contribution from stroke timing variation.
             value += values[axis] - baseline[axis]
             low, high = bounds[axis]
             values[axis] = max(low, min(high, value))
         self._primary_pulse_timing_status = tuple(statuses)
-        return replace(sample, shifted_primary_pulse=tuple(values))
+        return replace(sample, shifted_primary_pulse=tuple(values),
+                       primary_pulse_smoothed=tuple(smoothed_axes) if any(smoothed_axes) else ())
 
     def _release_due(self, now: float) -> None:
         due: list[OutputSample] = []
@@ -1010,28 +1050,22 @@ class VectorEngine:
                   and speed_percent > 0.5)
         speed = min(1.0, max(0.0, speed_percent / 100.0))
         inverted_l0 = 1.0 - min(1.0, max(0.0, output_l0))
-        limited = min(self.pulse_width_max, max(self.pulse_width_min, inverted_l0))
         ratio = self.pulse_width_ratio
-        combined = (speed * (ratio - 1.0) + limited) / ratio
+        combined = (speed * (ratio - 1.0) + inverted_l0) / ratio
         if not active:
             self._width_was_active = False
             combined *= self.volume_rest_level
-            return self._shape_parameter('pulse_width',
-                min(self.pulse_width_max, max(self.pulse_width_min, combined)),
-                self.pulse_width_min, self.pulse_width_max)
-        if not self._width_was_active:
-            self._width_active_since = at_time
-            self._width_was_active = True
-        if self.volume_ramp_up_seconds > 0:
-            progress = min(1.0, max(0.0,
-                (at_time - self._width_active_since) / self.volume_ramp_up_seconds))
-            combined *= self.volume_rest_level + (1.0 - self.volume_rest_level) * progress
-        # Unlike upstream's intermediate input limit, Vector exposes Min/Max as
-        # a live controller-adjustable output range. Enforce it after blending
-        # so the actual P1 command always remains inside the displayed range.
+        else:
+            if not self._width_was_active:
+                self._width_active_since = at_time
+                self._width_was_active = True
+            if self.volume_ramp_up_seconds > 0:
+                progress = min(1.0, max(0.0,
+                    (at_time - self._width_active_since) / self.volume_ramp_up_seconds))
+                combined *= self.volume_rest_level + (1.0 - self.volume_rest_level) * progress
         return self._shape_parameter('pulse_width',
-                min(self.pulse_width_max, max(self.pulse_width_min, combined)),
-                self.pulse_width_min, self.pulse_width_max)
+            scale_response(combined, self.pulse_width_min, self.pulse_width_max),
+            self.pulse_width_min, self.pulse_width_max)
 
     def _calculate_prostate(self, stroke: SegmentState, at_time: float) -> tuple[float, float]:
         # RFP tear-shaped prostate path is generated from inverted L0.

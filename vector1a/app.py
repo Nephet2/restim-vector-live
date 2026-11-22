@@ -208,6 +208,7 @@ class VectorApp:
     SETTINGS_FIELDS = (
         "automatic_ready",
         "frequency_damping", "pulse_frequency_damping", "pulse_rise_damping", "pulse_width_damping",
+        "pulse_smoothing_seconds",
         *(f"{axis}_{suffix}" for axis in PRIMARY_PULSE_AXES
           for suffix in ("offset_ms", "phase_degrees")),
         "volume_response_min", "volume_response_max", "frequency_min", "frequency_max",
@@ -319,6 +320,7 @@ class VectorApp:
         self.pulse_frequency_damping = tk.DoubleVar(value=0.0)
         self.pulse_rise_damping = tk.DoubleVar(value=0.0)
         self.pulse_width_damping = tk.DoubleVar(value=0.0)
+        self.pulse_smoothing_seconds = tk.DoubleVar(value=5.0)
         for axis in PRIMARY_PULSE_AXES:
             setattr(self, f"{axis}_offset_ms", tk.DoubleVar(value=0.0))
             setattr(self, f"{axis}_phase_degrees", tk.DoubleVar(value=0.0))
@@ -964,6 +966,14 @@ class VectorApp:
                         variable=self.magik_keyframe_arcs,
                         command=self._publish_output_config).grid(
                             row=13, column=0, columnspan=6, sticky="w", pady=(5, 0))
+        ttk.Label(motion, text="Pulse smoothing window (s)").grid(row=14, column=0, sticky="w")
+        smoothing = ttk.Spinbox(motion, from_=0, to=20, increment=.5, width=7,
+                                textvariable=self.pulse_smoothing_seconds, command=self.apply_config)
+        smoothing.grid(row=14, column=1, sticky="w", padx=6)
+        smoothing.bind("<Return>", lambda event: self.apply_config())
+        smoothing.bind("<FocusOut>", lambda event: self.apply_config())
+        ttk.Label(motion, text="All four parameters · limited by look-ahead · 0 uses damping alone",
+                  foreground="#555").grid(row=14, column=2, columnspan=4, sticky="w")
 
         volume_frame = self._frame("Volume response", 2, 0, 2)
         build_volume_response(self, volume_frame)
@@ -2423,7 +2433,8 @@ class VectorApp:
                                   variation_fade_seconds=self.variation_fade_seconds.get(),
                                   spatial_curve=self.four_phase_spatial_curve.get(),
                                   spatial_blend=self.four_phase_spatial_blend.get(),
-                                  parameter_curves=self._parameter_curves)
+                                  parameter_curves=self._parameter_curves,
+                                  pulse_smoothing_seconds=self.pulse_smoothing_seconds.get())
             self.engine.configure_modifier(
                 enabled=self.modifier_enabled.get(),
                 stroke_range=self.modifier_stroke_range.get(),
@@ -4138,16 +4149,18 @@ class VectorApp:
             (self.pulse_width_bar, self.pulse_width_value, diag.pulse_width,
              self.send_pulse_width, config.pulse_width_damping),
         )
+        smoothing = self.engine.pulse_smoothing_seconds > 0
         for index, (bar, target_readout, target, enabled_var, damping) in enumerate(axes):
             enabled = enabled_var.get()
             command = pulse[index] if enabled and pulse is not None else None
-            bar.set_live_value(target, command if damping > 0 else None)
+            show_composed = damping > 0 or smoothing
+            bar.set_live_value(target, command if show_composed else None)
             target_readout.set(f"{target:.4f}")
             readout = self._pulse_command_readouts[index]
             if command is None:
                 text = "Composed command: --" if enabled else "Send TCode off"
             else:
-                label = "Composed command (orange)" if damping > 0 else "Composed command"
+                label = "Composed command (orange)" if show_composed else "Composed command"
                 text = f"{label}: {command:.4f}"
             status = timing_statuses[index]
             if status != "Off":

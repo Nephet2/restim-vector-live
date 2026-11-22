@@ -69,6 +69,14 @@ class DeoVRInputTests(TestCase):
             accept(path="https://example.invalid/second.m3u8")
             self.assertIsNone(self.player.sample(self.now, "Linear")[0])
 
+    def test_slr_video_points_to_mfp_and_waits_for_script(self):
+        path = "https://cdn-vr.sexlikereal.com/stream.m3u8"
+        self.player._accept(vr_snapshot(DEOVR, self.message | {"path": path}))
+        clock, script = self.player.session_status(self.now)
+        self.assertEqual(clock, "Playing")
+        self.assertIn("select MultiFunPlayer", script)
+        self.assertIsNone(self.player.sample(self.now, "Linear")[0])
+
     def test_invalid_state_and_here_sphere_resource(self):
         self.assertFalse(vr_snapshot(DEOVR, self.message | {"playerState": 2}).connected)
         here = vr_snapshot(HERESPHERE, self.message | {"resource": "D:/some/file.mp4"})

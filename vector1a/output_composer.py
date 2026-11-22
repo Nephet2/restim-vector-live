@@ -71,9 +71,13 @@ class OutputComposer:
     def reset_pulse_damping(self) -> None:
         self._pulse_damping_state = None
 
-    def _damp_primary_pulse(self, values, due_at, config, howl_pulse):
+    def _damp_primary_pulse(self, values, due_at, config, howl_pulse, smoothed_axes=()):
         seconds = (config.frequency_damping, config.pulse_frequency_damping,
                    config.pulse_rise_damping, config.pulse_width_damping)
+        if smoothed_axes:
+            seconds = tuple(
+                0.0 if smoothed and not (howl_pulse and axis in (1, 3)) else tau
+                for axis, (smoothed, tau) in enumerate(zip(smoothed_axes, seconds)))
         previous = self._pulse_damping_state
         if previous is not None and any(seconds):
             last_at, last_values = previous
@@ -386,7 +390,7 @@ class OutputComposer:
         primary_frequency, primary_pulse_frequency, primary_pulse_rise, primary_pulse_width = (
             self._damp_primary_pulse(
                 (primary_frequency, primary_pulse_frequency, primary_pulse_rise, primary_pulse_width),
-                sample.due_at, config, howl_pulse))
+                sample.due_at, config, howl_pulse, sample.primary_pulse_smoothed))
         if config.director_events_enabled:
             event_base = authored_overrides or {}
             event_values = self.event_engine.apply_triggers(sample.due_at, {

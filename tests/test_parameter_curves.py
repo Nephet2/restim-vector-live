@@ -27,7 +27,7 @@ def test_curve_validation_copy_and_shape_bounds():
 
 
 def test_straight_curves_preserve_existing_calculations_exactly():
-    # The old arithmetic remains explicit, including the legacy width clamp.
+    # Identity curves preserve the baseline calculations for each axis.
     engine = VectorEngine(lambda sample:None, clock=lambda:10.)
     engine.volume_ramp_up_seconds = 0
     for speed in (0.,.3,1.,20.,60.,100.):
@@ -43,11 +43,10 @@ def test_straight_curves_preserve_existing_calculations_exactly():
             combined=((1-engine.frequency_ramp_level)*(engine.pulse_rise_ratio-1)+1-normalized)/engine.pulse_rise_ratio
             expected=engine.pulse_rise_min+combined*(engine.pulse_rise_max-engine.pulse_rise_min)
             assert engine._calculate_pulse_rise_time(speed) == expected
-            limited=min(engine.pulse_width_max,max(engine.pulse_width_min,1-value))
-            combined=(normalized*(engine.pulse_width_ratio-1)+limited)/engine.pulse_width_ratio
+            combined=(normalized*(engine.pulse_width_ratio-1)+1-value)/engine.pulse_width_ratio
             if speed<=.5:combined*=engine.volume_rest_level
-            expected=min(engine.pulse_width_max,max(engine.pulse_width_min,combined))
-            assert engine._calculate_pulse_width(10.,speed,value) == expected
+            expected=engine.pulse_width_min+combined*(engine.pulse_width_max-engine.pulse_width_min)
+            assert engine._calculate_pulse_width(10.,speed,value) == pytest.approx(expected)
 
 
 def test_each_curve_shapes_its_own_axis_and_fixed_bounds():
