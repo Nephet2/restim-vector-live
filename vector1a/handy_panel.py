@@ -472,7 +472,8 @@ class HandyPanel:
                 (self.invert, self.control.invert), (self.gradient, self.control.gradient)):
             if variable.get() != value:
                 variable.set(value)
-        if self.window.focus_get() != self.offset_box and self.offset_box.get() != str(self.control.offset):
+        # Tk path comparison; focus_get() can raise KeyError while a dropdown is open.
+        if str(self.window.tk.call("focus")) != str(self.offset_box) and self.offset_box.get() != str(self.control.offset):
             self.offset.set(self.control.offset)
         self.connect_button.configure(text="Disconnect" if self.output.connected else "Connect")
         self.connect_button.state(["disabled" if self.output.pending else "!disabled"])

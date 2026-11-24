@@ -98,7 +98,9 @@ class RangeBar(tk.Canvas):
             # Split handles remain independently selectable even at equal bounds.
             self.create_rectangle(x0-4, 2, x0+4, h/2, fill="#354b60", outline="#fff")
             self.create_rectangle(x1-4, h/2, x1+4, h-1, fill="#354b60", outline="#fff")
-            if self.focus_get() == self:
+            # Compare Tk paths: focus_get() raises KeyError on Python 3.10 while a
+            # dropdown list (Tk's internal "popdown") has the focus.
+            if str(self.tk.call("focus")) == str(self):
                 x = x0 if self._active == "minimum" else x1
                 y0, y1 = (1, h/2+1) if self._active == "minimum" else (h/2-1, h)
                 self.create_rectangle(x-5, y0, x+5, y1, outline="#1769aa", width=2)

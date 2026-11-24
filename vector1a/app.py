@@ -4193,6 +4193,14 @@ class VectorApp:
         self.mfp_status.set(self.listener.connection_label())
 
     def _refresh(self) -> None:
+        # Always schedule the next pass: an error in one display step must not
+        # stop the live display (or the pressure-fault check) for the session.
+        try:
+            self._refresh_once()
+        finally:
+            self.root.after(100, self._refresh)
+
+    def _refresh_once(self) -> None:
         self.pressure_control.target()
         if self.pressure_control.fault and not self._pressure_fault_seen:
             self._pressure_fault_seen = True
@@ -4441,7 +4449,6 @@ class VectorApp:
         if self._timeline_window is not None and self._timeline_window.winfo_exists():
             self._refresh_timeline_window()
         self.diagnostics_panel.refresh()
-        self.root.after(100, self._refresh)
 
     @staticmethod
     def _health_age(value: object) -> str:

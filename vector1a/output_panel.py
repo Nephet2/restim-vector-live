@@ -263,7 +263,8 @@ class OutputPanel:
                 (self.hinvert, h.invert), (self.hgradient, h.gradient), (self.hnative, h.manual_native)):
             if variable.get() != value:
                 variable.set(value)
-        if self.window.focus_get() != self.hoffset_box and self.hoffset_box.get() != str(h.offset):
+        # Tk path comparison; focus_get() can raise KeyError while a dropdown is open.
+        if str(self.window.tk.call("focus")) != str(self.hoffset_box) and self.hoffset_box.get() != str(h.offset):
             self.hoffset.set(h.offset)
         if self.hscript.get() != h.script.name and getattr(self, "_displayed_hscript", None) is not h.script:
             self.hscript.set(h.script.name)
