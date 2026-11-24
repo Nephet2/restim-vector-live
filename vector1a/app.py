@@ -186,10 +186,10 @@ class VectorApp:
     TOP_FOCUS_PROFILE_NAMES = TOP_FOCUS_LABELS
     BOTTOM_FOCUS_PROFILE_NAMES = BOTTOM_FOCUS_LABELS
     PRIMARY_SPATIAL_NAMES = {
-        "top_moving_focus": "Top â€” Moving Focus",
-        "top_depth_spread": "Top â€” Depth Spread",
-        "top_howl_positional": "Top â€” Howl Positional",
-        "top_howl_dynamic": "Top â€” Howl Dynamic",
+        "top_moving_focus": "Top — Moving Focus",
+        "top_depth_spread": "Top — Depth Spread",
+        "top_howl_positional": "Top — Howl Positional",
+        "top_howl_dynamic": "Top — Howl Dynamic",
         "top_custom": "Top - Custom curves",
     }
     SECONDARY_SPATIAL_NAMES = {
@@ -516,7 +516,7 @@ class VectorApp:
         self.modifier_tempo_scale = tk.DoubleVar(value=2.0)
         self.modifier_tempo_duration_seconds = tk.DoubleVar(value=30.0)
         self.modifier_status = tk.StringVar(value="Authored L0 unchanged")
-        self.modifier_tempo_status = tk.StringVar(value="Tempo authored Ã—1.0")
+        self.modifier_tempo_status = tk.StringVar(value="Tempo authored ×1.0")
         self._modifier_window = None
         self.controller_enabled = tk.BooleanVar(value=True)
         self.controller_target = tk.IntVar(value=0)
@@ -919,7 +919,7 @@ class VectorApp:
         ttk.Button(motion, text="Apply", command=self.apply_config).grid(row=3, column=5, sticky="e")
         ttk.Checkbutton(motion, text="Add smooth L0 position variation", variable=self.jitter_enabled,
                         command=self.apply_config).grid(row=3, column=0, sticky="w", pady=(5, 2))
-        ttk.Label(motion, text="Maximum shift (Â±L0)").grid(row=3, column=1, sticky="e")
+        ttk.Label(motion, text="Maximum shift (±L0)").grid(row=3, column=1, sticky="e")
         ttk.Spinbox(motion, from_=0, to=.20, increment=.005,
                     textvariable=self.jitter_amplitude, width=8,
                     command=self.apply_config).grid(row=3, column=2, sticky="w")
@@ -953,17 +953,17 @@ class VectorApp:
         ttk.Label(motion, text="Window either side (s)").grid(row=6, column=1, sticky="e")
         ttk.Spinbox(motion, from_=.05, to=1.5, increment=.05,
                     textvariable=self.four_phase_reversal_window, width=8).grid(row=6, column=2, sticky="w")
-        ttk.Label(motion, text="Current-volume boost (+Ã—)").grid(row=6, column=3, sticky="e")
+        ttk.Label(motion, text="Current-volume boost (+×)").grid(row=6, column=3, sticky="e")
         ttk.Spinbox(motion, from_=0, to=1, increment=.05,
                     textvariable=self.four_phase_reversal_strength, width=8).grid(row=6, column=4, sticky="w")
         ttk.Label(motion, textvariable=self.four_phase_reversal_live,
                   foreground="#555").grid(row=6, column=5, sticky="w", padx=8)
         ttk.Checkbutton(motion, text="Stroke-phase texture",
                         variable=self.four_phase_stroke_phase_texture).grid(row=7, column=0, sticky="w")
-        ttk.Label(motion, text="L0 rising volume Ã—").grid(row=7, column=1, sticky="e")
+        ttk.Label(motion, text="L0 rising volume ×").grid(row=7, column=1, sticky="e")
         ttk.Spinbox(motion, from_=.8, to=1, increment=.01,
                     textvariable=self.motion_rising_volume_multiplier, width=8).grid(row=7, column=2, sticky="w")
-        ttk.Label(motion, text="L0 falling volume Ã—").grid(row=7, column=3, sticky="e")
+        ttk.Label(motion, text="L0 falling volume ×").grid(row=7, column=3, sticky="e")
         ttk.Spinbox(motion, from_=.8, to=1, increment=.01,
                     textvariable=self.motion_falling_volume_multiplier, width=8).grid(row=7, column=4, sticky="w")
         ttk.Label(motion, text="Shared by 3-phase and 4-phase",
@@ -1164,7 +1164,7 @@ class VectorApp:
 
         four_phase = self._frame("Four-phase primary motion", 8, 0, 2)
         self.four_phase_bars, self.four_phase_values = [], []
-        for row, label in enumerate(("A â€” top", "B", "C", "D â€” bottom")):
+        for row, label in enumerate(("A — top", "B", "C", "D — bottom")):
             ttk.Label(four_phase, text=label, width=18).grid(row=row, column=0, sticky="w")
             ttk.Label(four_phase, text="0").grid(row=row, column=1)
             bar = ttk.Progressbar(four_phase, orient="horizontal", mode="determinate",
@@ -1182,7 +1182,7 @@ class VectorApp:
         ttk.Spinbox(four_phase, from_=0, to=1, increment=.05,
                     textvariable=self.four_phase_return_depth, width=7).grid(
                         row=4, column=1, sticky="w")
-        ttk.Label(four_phase, text="Signed: primary +1.00 | return âˆ’depth | unused 0.00") \
+        ttk.Label(four_phase, text="Signed: primary +1.00 | return −depth | unused 0.00") \
             .grid(row=4, column=2, columnspan=4, sticky="w", padx=8)
         ttk.Checkbutton(four_phase, text="Reverse L0 direction", variable=self.four_phase_invert).grid(row=5, column=0, sticky="w")
         ttk.Checkbutton(four_phase, text="Add slow volume variation", variable=self.four_phase_volume_modulation).grid(row=5, column=3, sticky="w")
@@ -1225,7 +1225,7 @@ class VectorApp:
         ttk.Checkbutton(four_phase, text="Use different return-stroke crossover",
                         variable=self.four_phase_directional_trajectory).grid(
                             row=9, column=0, sticky="w")
-        ttk.Label(four_phase, text="Return width Ã—").grid(row=9, column=1, sticky="e")
+        ttk.Label(four_phase, text="Return width ×").grid(row=9, column=1, sticky="e")
         ttk.Spinbox(four_phase, from_=.2, to=3, increment=.05,
                     textvariable=self.four_phase_reverse_width_scale,
                     width=7).grid(row=9, column=2, sticky="w")
@@ -1264,11 +1264,11 @@ class VectorApp:
             ttk.Spinbox(howl_controls, from_=low, to=high, increment=step,
                         textvariable=variable, width=9).grid(row=row+1, column=col)
         ttk.Label(howl_controls, text="Balance: 0 reduces high frequencies; 0.5 neutral; "
-                  "1 reduces low frequencies. Pulse range is within ReStim's 1â€“100 Hz mapping.",
+                  "1 reduces low frequencies. Pulse range is within ReStim's 1–100 Hz mapping.",
                   wraplength=680).grid(row=8, column=0, columnspan=5, sticky="w")
         ttk.Checkbutton(howl_controls, text="Howl pulse frequency and low-frequency thump",
                         variable=self.howl_pulse).grid(row=2, column=0, columnspan=4, sticky="w")
-        ttk.Label(howl_controls, text="Pulse option requires ReStim P0 range 1â€“100 Hz, P1 range 3â€“20 cycles. "
+        ttk.Label(howl_controls, text="Pulse option requires ReStim P0 range 1–100 Hz, P1 range 3–20 cycles. "
                   "Carrier and rise time remain Vector controls.", wraplength=680).grid(
                       row=3, column=0, columnspan=4, sticky="w")
         ttk.Label(four_phase, text="Spatial model").grid(row=10, column=0, sticky="w")
@@ -1297,11 +1297,11 @@ class VectorApp:
                   foreground="#9b4b00").grid(
                       row=11, column=2, columnspan=4, sticky="w", pady=(2, 4))
         ttk.Label(four_phase, text="Change width through each stroke").grid(row=12, column=0, sticky="w")
-        ttk.Label(four_phase, text="Accelerating width Ã—").grid(row=12, column=1, sticky="e")
+        ttk.Label(four_phase, text="Accelerating width ×").grid(row=12, column=1, sticky="e")
         ttk.Spinbox(four_phase, from_=.2, to=3, increment=.05,
                     textvariable=self.four_phase_acceleration_width_scale,
                     width=7).grid(row=12, column=2, sticky="w")
-        ttk.Label(four_phase, text="Deceleration width Ã—").grid(row=12, column=3, sticky="e")
+        ttk.Label(four_phase, text="Deceleration width ×").grid(row=12, column=3, sticky="e")
         ttk.Spinbox(four_phase, from_=.2, to=3, increment=.05,
                     textvariable=self.four_phase_deceleration_width_scale,
                     width=7).grid(row=12, column=4, sticky="w")
@@ -1342,7 +1342,7 @@ class VectorApp:
             ttk.Label(four_phase, textvariable=value, width=10,
                       font=("TkDefaultFont", 10, "bold")).grid(row=row, column=1, sticky="w")
             self.four_phase_signed_values.append(value)
-        ttk.Label(four_phase, text="Conceptual relative potentials (âˆ’1 to +1); not T-code") \
+        ttk.Label(four_phase, text="Conceptual relative potentials (−1 to +1); not T-code") \
             .grid(row=15, column=2, columnspan=4, sticky="w", padx=8)
         ttk.Separator(four_phase, orient="horizontal").grid(
             row=19, column=0, columnspan=6, sticky="ew", pady=7)
@@ -1392,7 +1392,7 @@ class VectorApp:
                   text="Direct Xbox: D-pad frequency/pulse frequency | LB + D-pad rise/width | RB cycle signalling sequence | X/Y phase | A Resume | B Neutral | Menu Stop") \
             .grid(row=3, column=0, columnspan=7, sticky="w", padx=6, pady=(2, 2))
         ttk.Label(controller,
-                  text="W/S Frequency ramp Â±  â€¢  A/D Pulse frequency range âˆ’/+  â€¢  I/K Rise range +/âˆ’  â€¢  J/L Width range âˆ’/+  â€¢  Enter Resume  â€¢  Space Neutral  â€¢  Esc Stop") \
+                  text="W/S Frequency ramp ±  •  A/D Pulse frequency range −/+  •  I/K Rise range +/−  •  J/L Width range −/+  •  Enter Resume  •  Space Neutral  •  Esc Stop") \
             .grid(row=1, column=0, columnspan=6, sticky="w", padx=6, pady=(6, 2))
 
         variety = self._frame("Rolling Variety", 10, 0, 2)
@@ -1519,7 +1519,7 @@ class VectorApp:
                 row=row, column=0, sticky="w", pady=5)
             ttk.Entry(body, textvariable=target, width=62).grid(
                 row=row, column=1, columnspan=2, sticky="ew", padx=8)
-            ttk.Button(body, text="Browseâ€¦",
+            ttk.Button(body, text="Browse…",
                        command=lambda v=target: self._browse_launch_target(v)).grid(
                            row=row, column=3, sticky="e")
         ttk.Checkbutton(body, text="Automatically start listener, connect Primary ReStim and resume output",
@@ -1568,7 +1568,7 @@ class VectorApp:
 
         self._startup_in_progress = True
         self.session_ready_status.set("SESSION: STARTING")
-        self._set_startup_status("Starting selected session componentsâ€¦")
+        self._set_startup_status("Starting selected session components…")
         self._save_settings()
 
         # MFP sends into Vector, so Vector can prepare the listener immediately.
@@ -1678,7 +1678,7 @@ class VectorApp:
         controls: dict[str, tuple[tk.BooleanVar, ttk.Label, ttk.Label]] = {}
 
         ttk.Separator(outer).pack(fill="x", pady=(12, 8))
-        ttk.Label(outer, text="Recent MFP packets (raw input â†’ parsed axes)",
+        ttk.Label(outer, text="Recent MFP packets (raw input → parsed axes)",
                   font=("TkDefaultFont", 9, "bold")).pack(anchor="w")
         packet_box = tk.Text(outer, height=12, wrap="none")
         packet_box.pack(fill="both", expand=True, pady=(4, 6))
@@ -1755,7 +1755,7 @@ class VectorApp:
                     lines.append(f'{packet["transport"]} {age:5.2f}s  parsed=[{parsed}]  raw={raw}')
                 packet_box.configure(state="normal")
                 packet_box.delete("1.0", "end")
-                packet_box.insert("1.0", "\n".join(lines) if lines else "Waiting for MFP packetsâ€¦")
+                packet_box.insert("1.0", "\n".join(lines) if lines else "Waiting for MFP packets…")
                 packet_box.configure(state="disabled")
             for axis in axes:
                 if axis not in controls:
@@ -2292,7 +2292,7 @@ class VectorApp:
             self.modifier_status.set("Authored L0 unchanged")
             return
         self.modifier_status.set(
-            f"ON  range Ã—{self.modifier_stroke_range.get():.2f} | "
+            f"ON  range ×{self.modifier_stroke_range.get():.2f} | "
             f"bias {self.modifier_position_bias.get():+.2f} | "
             f"smooth {self.modifier_smoothing.get():.2f}")
 
@@ -2310,7 +2310,7 @@ class VectorApp:
             return
         window = tk.Toplevel(self.root)
         self._modifier_window = window
-        window.title("Deterministic funscript modifiers â€” Alpha70")
+        window.title("Deterministic funscript modifiers — Alpha70")
         window.geometry("820x500")
         window.transient(self.root)
         body = ttk.Frame(window, padding=14)
@@ -2350,11 +2350,11 @@ class VectorApp:
         ttk.Combobox(tempo, textvariable=self.modifier_tempo_duration_seconds, state="readonly", width=8,
                      values=(10, 15, 30, 60, 90, 120)).grid(row=0, column=3, sticky="w", padx=(6, 16))
         ttk.Button(tempo, text="Start tempo window", command=self.start_tempo_window).grid(row=0, column=4, padx=6)
-        ttk.Button(tempo, text="Restore Ã—1", command=self.restore_tempo).grid(row=0, column=5, padx=6)
+        ttk.Button(tempo, text="Restore ×1", command=self.restore_tempo).grid(row=0, column=5, padx=6)
         ttk.Label(tempo, textvariable=self.modifier_tempo_status, foreground="#555").grid(
             row=1, column=0, columnspan=6, sticky="w", pady=(8, 0))
         ttk.Label(tempo, text=(
-            "Tempo uses the loaded full funscript timeline, so 2Ã— can read future authored positions. "
+            "Tempo uses the loaded full funscript timeline, so 2× can read future authored positions. "
             "At the end of the window Vector rejoins the live authored position through the transition ramp."),
             wraplength=740, foreground="#555").grid(row=2, column=0, columnspan=6, sticky="w", pady=(5, 0))
 
@@ -2380,13 +2380,13 @@ class VectorApp:
             now = time.monotonic()
             self.tempo.start(scale, media_pos, now, duration,
                              self.modifier_transition_seconds.get())
-            self.modifier_tempo_status.set(f"Tempo Ã—{scale:.1f} active for {duration:.0f} s")
+            self.modifier_tempo_status.set(f"Tempo ×{scale:.1f} active for {duration:.0f} s")
         except (tk.TclError, ValueError) as exc:
             messagebox.showerror("Tempo modifier", str(exc))
 
     def restore_tempo(self) -> None:
         self.tempo.restore(time.monotonic())
-        self.modifier_tempo_status.set("Tempo authored Ã—1.0")
+        self.modifier_tempo_status.set("Tempo authored ×1.0")
 
     def _tempo_l0(self, raw_value: float, now: float) -> float:
         return self.tempo.transform(raw_value, now)
@@ -3500,7 +3500,7 @@ class VectorApp:
         if snap.get("loaded"):
             self.timeline_file_display.set(str(snap.get("file") or "Loaded funscript"))
         if not snap.get("loaded"):
-            self.timeline_status_display.set("Timeline idle â€” load a .funscript to enable authored lookahead")
+            self.timeline_status_display.set("Timeline idle — load a .funscript to enable authored lookahead")
             return
         if not snap.get("synced"):
             conf = snap.get("sync_confidence")
@@ -3609,13 +3609,13 @@ class VectorApp:
 
     def _refresh_director_profile_status(self) -> None:
         for label, var in self._director_texture_status_vars.items():
-            var.set("Saved" if label in self._director_texture_profiles else "â€”")
+            var.set("Saved" if label in self._director_texture_profiles else "—")
         for label, var in self._director_variation_status_vars.items():
-            var.set("Saved" if label in self._director_variation_profiles else "â€”")
+            var.set("Saved" if label in self._director_variation_profiles else "—")
         for label, var in self._director_top_focus_status_vars.items():
-            var.set("Saved" if label in self._director_top_focus_profiles else "â€”")
+            var.set("Saved" if label in self._director_top_focus_profiles else "—")
         for label, var in self._director_bottom_focus_status_vars.items():
-            var.set("Saved" if label in self._director_bottom_focus_profiles else "â€”")
+            var.set("Saved" if label in self._director_bottom_focus_profiles else "—")
 
     def _capture_director_profile(self, kind: str, label: str) -> None:
         if kind == "texture":
@@ -3700,8 +3700,8 @@ class VectorApp:
             self.director_semantic_status.set(str(exc))
             messagebox.showerror("Authored tempo", str(exc), parent=self._director_semantic_window)
         else:
-            self.director_semantic_status.set("Authored tempo restored to 1Ã—" if scale == 1.0
-                                            else f"Temporary authored tempo {scale:g}Ã— for {duration:g} s")
+            self.director_semantic_status.set("Authored tempo restored to 1×" if scale == 1.0
+                                            else f"Temporary authored tempo {scale:g}× for {duration:g} s")
 
     def show_director_semantic_window(self) -> None:
         if self._director_semantic_window is not None and self._director_semantic_window.winfo_exists():
@@ -3729,7 +3729,7 @@ class VectorApp:
         row = 3
         for label in self.TEXTURE_PROFILE_NAMES:
             ttk.Label(body, text=label).grid(row=row, column=0, sticky="w", pady=2)
-            status_var = tk.StringVar(value="Saved" if label in self._director_texture_profiles else "â€”")
+            status_var = tk.StringVar(value="Saved" if label in self._director_texture_profiles else "—")
             self._director_texture_status_vars[label] = status_var
             ttk.Label(body, textvariable=status_var).grid(row=row, column=1, sticky="w", padx=(10, 20))
             ttk.Button(body, text="Capture", command=lambda x=label: self._capture_director_profile("texture", x)).grid(row=row, column=2, sticky="w", padx=4)
@@ -3746,18 +3746,18 @@ class VectorApp:
             row += 1
         ttk.Label(body, text="Secondary spatial", font=("TkDefaultFont", 10, "bold")).grid(row=row, column=0, sticky="w", pady=(8, 0))
         row += 1
-        ttk.Label(body, text="Bottom Focus â€” existing secondary/prostate generated path").grid(row=row, column=0, columnspan=4, sticky="w")
+        ttk.Label(body, text="Bottom Focus — existing secondary/prostate generated path").grid(row=row, column=0, columnspan=4, sticky="w")
         row += 1
 
         ttk.Separator(body, orient="horizontal").grid(row=row, column=0, columnspan=4, sticky="ew", pady=10)
         row += 1
-        ttk.Label(body, text="Top Spatial Focus â€” four-phase only", wraplength=260, font=("TkDefaultFont", 10, "bold")).grid(row=row, column=0, sticky="w")
+        ttk.Label(body, text="Top Spatial Focus — four-phase only", wraplength=260, font=("TkDefaultFont", 10, "bold")).grid(row=row, column=0, sticky="w")
         ttk.Label(body, text="Model").grid(row=row, column=1, sticky="w")
         ttk.Label(body, text="").grid(row=row, column=2, sticky="w")
         ttk.Label(body, text="Apply").grid(row=row, column=3, sticky="w")
         row += 1
         ttk.Label(body, text=("Four-phase E1-E4 only; no effect on three-phase Primary output or its alpha/beta plot.\n"
-                        "Electrode map: E1 glans Â· E2 shaft Â· E3 lower shaft Â· E4 root"),
+                        "Electrode map: E1 glans · E2 shaft · E3 lower shaft · E4 root"),
                   wraplength=720, justify="left",
                   foreground="#555").grid(row=row, column=0, columnspan=4, sticky="w", pady=(0,4))
         row += 1
@@ -3772,7 +3772,7 @@ class VectorApp:
         ttk.Label(body, text="").grid(row=row, column=2, sticky="w", pady=(8,0))
         ttk.Label(body, text="Apply").grid(row=row, column=3, sticky="w", pady=(8,0))
         row += 1
-        ttk.Label(body, text="Zone map: A prostate Â· B anus Â· C testicles/perineum",
+        ttk.Label(body, text="Zone map: A prostate · B anus · C testicles/perineum",
                   foreground="#555").grid(row=row, column=0, columnspan=4, sticky="w", pady=(0,4))
         row += 1
         for label in self.BOTTOM_FOCUS_PROFILE_NAMES:
@@ -3784,7 +3784,7 @@ class VectorApp:
         ttk.Label(body, text="Four-phase top headroom ceiling").grid(row=row, column=0, sticky="w", pady=(8,0))
         ttk.Scale(body, from_=0.60, to=1.0, variable=self.top_focus_nominal_ceiling, orient="horizontal", length=220).grid(row=row, column=1, columnspan=2, sticky="w", pady=(8,0))
         row += 1
-        ttk.Label(body, text="Four-phase top focus strength (0â€“175%)").grid(row=row, column=0, sticky="w")
+        ttk.Label(body, text="Four-phase top focus strength (0–175%)").grid(row=row, column=0, sticky="w")
         ttk.Scale(body, from_=0.0, to=1.75, variable=self.top_focus_strength, orient="horizontal", length=220).grid(row=row, column=1, columnspan=2, sticky="w")
         row += 1
         ttk.Label(body, text="Bottom focus strength").grid(row=row, column=0, sticky="w")
@@ -3836,7 +3836,7 @@ class VectorApp:
         row += 1
         for label in self.VARIATION_PROFILE_NAMES:
             ttk.Label(body, text=label).grid(row=row, column=0, sticky="w", pady=2)
-            status_var = tk.StringVar(value="Saved" if label in self._director_variation_profiles else "â€”")
+            status_var = tk.StringVar(value="Saved" if label in self._director_variation_profiles else "—")
             self._director_variation_status_vars[label] = status_var
             ttk.Label(body, textvariable=status_var).grid(row=row, column=1, sticky="w", padx=(10, 20))
             ttk.Button(body, text="Capture", command=lambda x=label: self._capture_director_profile("variation", x)).grid(row=row, column=2, sticky="w", padx=4)
@@ -3886,7 +3886,7 @@ class VectorApp:
         self._preset_slots[slot] = self._preset_snapshot()
         self._preset_active = slot
         name = self.preset_a_name.get() if slot == "A" else self.preset_b_name.get()
-        self.preset_status.set(f"Captured and active: {slot} â€” {name}")
+        self.preset_status.set(f"Captured and active: {slot} — {name}")
         self._save_settings()
 
     def _apply_preset(self, slot: str) -> None:
@@ -3923,7 +3923,7 @@ class VectorApp:
             self._preset_transition = None
             label = ("Baseline" if slot == "Baseline" else
                      (self.preset_a_name.get() if slot == "A" else self.preset_b_name.get()))
-            self.preset_status.set(f"Active: {slot} â€” {label}")
+            self.preset_status.set(f"Active: {slot} — {label}")
 
     def _toggle_ab_preset(self) -> None:
         self._apply_preset("B" if self._preset_active == "A" else "A")
@@ -4243,7 +4243,7 @@ class VectorApp:
                           else self.preset_b_name.get()))
                 suffix = "" if self._preset_matches(target) else " (modified)"
                 self.preset_status.set(
-                    f"Active: {self._preset_active} â€” {label}{suffix}")
+                    f"Active: {self._preset_active} — {label}{suffix}")
         diag = self.engine.diagnostics()
         self._emit_runtime_health(diag)
         values = {
@@ -4386,7 +4386,7 @@ class VectorApp:
         self.electrode_morph_bar["value"] = morph_amount
         if morph_kind == "window":
             self.four_phase_moving_sequence_live.set(
-                f"{morph_source}â†’{morph_target} | {morph_amount * 100:.0f}%")
+                f"{morph_source}→{morph_target} | {morph_amount * 100:.0f}%")
         elif morph_kind == "carousel" and self.four_phase_moving_sequence.get():
             self.four_phase_moving_sequence_live.set("carousel priority")
         elif morph_kind == "depth spread":

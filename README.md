@@ -67,9 +67,9 @@ second after they begin.
   and gain, script awareness, bounded modifiers and deterministic generated-motion plans.
   The API is disabled by default; no companion application is required.
 - Optional curated Director custom events layer temporary named recipes over the live
-  output. It has a separate operator opt-in, a fixed allowlist, bounded 2â€“30 second
+  output. It has a separate operator opt-in, a fixed allowlist, bounded 2–30 second
   duration, reduced Director amplitudes, live state reporting and immediate cancellation.
-- Script modifiers provide Stroke Range (0.30â€“1.50), Position Bias (Â±0.35),
+- Script modifiers provide Stroke Range (0.30–1.50), Position Bias (±0.35),
   Curve Smoothing and temporary tempo windows with restoration. Accelerated authored
   tempo requires a loaded and synchronized funscript timeline.
 - Optional funscript timeline with VLC/MPC media clocks, automatic script discovery,
@@ -370,7 +370,7 @@ Vector remains completely standalone. Alpha 51 adds an **optional, disabled-by-d
 
 ### Director semantic profiles (Alpha 52)
 
-The optional local Director API now supports named perceptual controls without exposing raw signal parameters. Texture and Variation profiles are captured by the operator from known-good Vector settings. Primary spatial offers Top â€” Moving Focus and Top â€” Depth Spread; the existing secondary/prostate path is exposed semantically as Bottom Focus. Vector remains fully usable without any AI or voice stack.
+The optional local Director API now supports named perceptual controls without exposing raw signal parameters. Texture and Variation profiles are captured by the operator from known-good Vector settings. Primary spatial offers Top — Moving Focus and Top — Depth Spread; the existing secondary/prostate path is exposed semantically as Bottom Focus. Vector remains fully usable without any AI or voice stack.
 
 
 ### Anatomical Spatial Focus (Alpha 55)
@@ -403,16 +403,16 @@ For best Spatial Focus effect, ensure electrode strength is properly calibrated 
 Alpha58 also exposes top/bottom Spatial Focus selection history to the Director so a companion can reason about how long a focus has been selected and what preceded it.
 
 
-## Alpha59 â€” bounded Spatial Gain
+## Alpha59 — bounded Spatial Gain
 
 Spatial Focus continues to control *where* the effect is concentrated. Alpha59 adds independent Top and Bottom Spatial Gain controls for *how much* intensity is applied while preserving the current focus.
 
-Defaults: 10 percentage-point step, 50â€“150% bounds, 20 percentage-points/second ramp, 100% baseline. Spatial Gain is applied to the final primary/secondary V0 path after authored-vs-generated source routing and before final clamp. Authored primary V0 is therefore covered as well.
+Defaults: 10 percentage-point step, 50–150% bounds, 20 percentage-points/second ramp, 100% baseline. Spatial Gain is applied to the final primary/secondary V0 path after authored-vs-generated source routing and before final clamp. Authored primary V0 is therefore covered as well.
 
 For best Spatial Focus effect, ensure electrode strength is properly calibrated in ReStim for the active electrode configuration.
 
 
-## Alpha 60 â€” Vector-backed LB push-to-talk state
+## Alpha 60 — Vector-backed LB push-to-talk state
 
 The optional Director API exposes `GET /v1/controller` from Vector's proven Windows XInput path. LB alone is a PTT candidate; LB+D-pad remains reserved for Vector's existing modified D-pad controls. This avoids depending on browser Gamepad visibility.
 
@@ -421,16 +421,16 @@ The optional Director API exposes `GET /v1/controller` from Vector's proven Wind
 
 The Director API now distinguishes input reception from output authority. A Director stop latches output off while MFP input may continue to be observed. Only an explicit resume re-enables output.
 
-## Alpha64 â€” read-only funscript timeline
+## Alpha64 — read-only funscript timeline
 
-Open **Director API â†’ Funscript timeline...** to load a `.funscript`. `MFP pattern sync` estimates script position from incoming L0 while MFP/media playback remains unchanged. `Manual preview` provides an internal seek/play/pause clock for testing. The timeline is observation only in this release and never replaces or modifies incoming T-code.
+Open **Director API → Funscript timeline...** to load a `.funscript`. `MFP pattern sync` estimates script position from incoming L0 while MFP/media playback remains unchanged. `Manual preview` provides an internal seek/play/pause clock for testing. The timeline is observation only in this release and never replaces or modifies incoming T-code.
 
 
 ## Alpha 65: direct media-player clock and automatic funscript discovery
 
 The read-only funscript timeline can now use **Auto media player**, **VLC direct**, or **MPC direct** as an authoritative playback clock. Auto mode tries VLC first and MPC second. Vector polls the player locally for media identity, playback state, duration and current position; ordinary seeks therefore move the timeline immediately without waiting for MFP pattern reacquisition.
 
-When **Auto-load matching funscript** is enabled, Vector looks first beside the currently playing local media for `<media basename>.funscript`, then in any semicolon-separated script-library folders configured in **Director API â†’ Funscript timeline...**. If a matching script is found it is loaded automatically. Manual loading, MFP pattern sync and Manual preview remain available fallbacks.
+When **Auto-load matching funscript** is enabled, Vector looks first beside the currently playing local media for `<media basename>.funscript`, then in any semicolon-separated script-library folders configured in **Director API → Funscript timeline...**. If a matching script is found it is loaded automatically. Manual loading, MFP pattern sync and Manual preview remain available fallbacks.
 
 Direct player integration remains observation-only: it cannot start, stop, seek or otherwise control the media player, and the loaded funscript does not drive or modify Vector output.
 
@@ -453,15 +453,15 @@ Alpha70 also adds a temporary **Tempo Window** with 0.5x, 1x and 2x choices plus
 
 ## Alpha71: relative Stroke Range Director control
 
-The Director API can now request `narrower`, `wider`, or `restore` through `/v1/modifier/stroke-range`. Vector owns the deterministic 0.10 step, 0.30â€“1.50 bounds, 0â€“1 output clamp, and the configured transition. Position Bias is preserved while Stroke Range changes, so a targeted focus can be tightened or loosened incrementally without losing its location.
+The Director API can now request `narrower`, `wider`, or `restore` through `/v1/modifier/stroke-range`. Vector owns the deterministic 0.10 step, 0.30–1.50 bounds, 0–1 output clamp, and the configured transition. Position Bias is preserved while Stroke Range changes, so a targeted focus can be tightened or loosened incrementally without losing its location.
 
-## Alpha77 â€” curated Director custom events
+## Alpha77 — curated Director custom events
 
 Alpha77 ports the fork's deterministic custom-event runtime and bundled recipe catalogue,
 then exposes ten reviewed recipes through the loopback Director API. Open **Director** and
 enable **Allow curated Director custom events** before a companion can trigger them.
 
-Vector accepts only the published allowlist, enforces a 2â€“30 second duration, uses reduced
+Vector accepts only the published allowlist, enforces a 2–30 second duration, uses reduced
 amplitudes for the stronger volume-modulation recipes, reports active/recent events in
 `GET /v1/state`, and clears every event on Cancel, Neutral or Stop. The countdown, extract,
 hard-stop, test and other experimental definitions remain unavailable to the Director API.
