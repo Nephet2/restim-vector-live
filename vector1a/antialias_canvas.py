@@ -18,9 +18,13 @@ except ImportError:
 ANTIALIAS_AVAILABLE = Image is not None
 
 class SmoothCanvas:
-    """Rasterise shapes at twice display resolution; keep native crisp Tk labels."""
-    def __init__(self, canvas, scale=2):
-        self.canvas=canvas;self.scale=scale;self.labels=[]
+    """Rasterise shapes at twice display resolution; keep native crisp Tk labels.
+
+    fast=True averages each scale x scale block instead of LANCZOS filtering:
+    a few times quicker, for views that are redrawn several times a second.
+    """
+    def __init__(self, canvas, scale=2, fast=False):
+        self.canvas=canvas;self.scale=scale;self.fast=fast;self.labels=[]
         self.w=max(100,canvas.winfo_width());self.h=max(100,canvas.winfo_height())
         bg=canvas.cget('background')
         self.img=Image.new('RGB',(self.w*scale,self.h*scale),bg)
@@ -53,14 +57,17 @@ class SmoothCanvas:
         self.pen.ellipse(box,fill=options.get('fill') or None,outline=options.get('outline') or None,width=width)
     def create_text(self,*coords,**options):self.labels.append((coords,options))
     def commit(self):
-        resampling=getattr(Image,'Resampling',Image)
-        image=self.img.resize((self.w,self.h),resampling.LANCZOS)
+        if self.fast:
+            image=self.img.reduce(self.scale)
+        else:
+            resampling=getattr(Image,'Resampling',Image)
+            image=self.img.resize((self.w,self.h),resampling.LANCZOS)
         self.canvas.delete('all');self.canvas._antialias_image=ImageTk.PhotoImage(image,master=self.canvas)
         self.canvas.create_image(0,0,image=self.canvas._antialias_image,anchor='nw')
         for coords,options in self.labels:self.canvas.create_text(*coords,**options)
 
-def painter(canvas):
-    return SmoothCanvas(canvas) if ANTIALIAS_AVAILABLE else canvas
+def painter(canvas, **options):
+    return SmoothCanvas(canvas, **options) if ANTIALIAS_AVAILABLE else canvas
 
 def present(paint):
     if isinstance(paint,SmoothCanvas):paint.commit()

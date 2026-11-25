@@ -23,6 +23,7 @@ from .motion import MotionMode, MotionParameters
 from .network import LatestFrameDispatcher, MFPListener, ReStimWebSocketClient
 from .connection_actions import ConnectionActions
 from .endpoints import validate_output_endpoints
+from dataclasses import fields as dataclass_fields
 from .output_config import OutputConfig, freeze_curves
 from .input_pipeline import InputPipeline, TempoController
 from .output_composer import OutputComposer
@@ -69,6 +70,14 @@ MAX_PULSE_DAMPING_SECONDS = {
     "pulse_rise": 10.0,
     "pulse_width": 30.0,
 }
+
+# OutputConfig fields read from the Tk setting of the same name; a write to any
+# of them republishes the config.  The other fields are set in
+# _publish_output_config.  Built from the dataclass so a new field cannot be
+# left out of either place.
+OUTPUT_CONFIG_SETTINGS = tuple(
+    field.name for field in dataclass_fields(OutputConfig)
+    if field.name not in {"custom_curves", "variety_started"})
 
 # Output envelopes (engine.configure_envelopes): app setting prefix -> engine axis.
 ENVELOPE_SETTING_AXES = (
@@ -669,7 +678,7 @@ class VectorApp:
         self._bind_controller_keys()
         self._controller_enabled_changed()
         self._publish_output_config()
-        for name in ('authored_routing_mode', 'bottom_focus_strength', 'bottom_spatial_gain_max_percent', 'bottom_spatial_gain_min_percent', 'bottom_spatial_gain_step_percent', 'director_events_enabled', 'director_top_focus', 'electrode_order', 'four_phase_acceleration_width_scale', 'four_phase_adaptive_crossover', 'four_phase_crossover_curve', 'four_phase_crossover_sharpness', 'four_phase_crossover_width', 'four_phase_deceleration_width_scale', 'four_phase_directional_trajectory', 'four_phase_fast_crossover_width', 'four_phase_full_depth_capture', 'four_phase_group_delay', 'four_phase_group_delay_ms', 'four_phase_group_delay_transition', 'four_phase_invert', 'four_phase_moving_sequence', 'four_phase_moving_sequence_depth', 'four_phase_moving_sequence_width', 'four_phase_return_depth', 'four_phase_reversal_emphasis', 'four_phase_reversal_strength', 'four_phase_reversal_window', 'four_phase_reverse_curve', 'four_phase_reverse_sharpness', 'four_phase_reverse_width_scale', 'four_phase_slow_crossover_width', 'four_phase_spatial_model', 'four_phase_spread_softness', 'four_phase_stroke_phase_texture', 'four_phase_tip_retention', 'four_phase_volume_ceiling', 'four_phase_volume_cycle', 'four_phase_volume_headroom', 'four_phase_volume_modulation', 'howl_balance_a', 'howl_balance_b', 'howl_boost', 'howl_freq_max', 'howl_freq_min', 'howl_pan', 'howl_position_strength', 'howl_pulse', 'howl_scaling', 'howl_sigma', 'howl_thump', 'howl_width', 'match_spatial_intensity', 'motion_falling_volume_multiplier', 'motion_rising_volume_multiplier', 'spatial_gain_ramp_percent_per_second', 'speed_linked_variation', 'top_focus_nominal_ceiling', 'top_focus_strength', 'top_spatial_gain_max_percent', 'top_spatial_gain_min_percent', 'top_spatial_gain_step_percent', 'variety_electrode_morph', 'variety_electrode_morph_cycle', 'variety_electrode_morph_transition_seconds', 'variety_enabled', 'volume'):
+        for name in OUTPUT_CONFIG_SETTINGS:
             getattr(self, name).trace_add("write", self._publish_output_config)
         self.xinput.start()
         self.engine.start()
@@ -694,85 +703,12 @@ class VectorApp:
     def _publish_output_config(self, *_args) -> None:
         # Tk thread only. Invalid intermediate entry text keeps the last valid snapshot.
         try:
-            snapshot = OutputConfig(
-                authored_routing_mode=self.authored_routing_mode.get(),
-                bottom_focus_strength=self.bottom_focus_strength.get(),
-                bottom_spatial_gain_max_percent=self.bottom_spatial_gain_max_percent.get(),
-                bottom_spatial_gain_min_percent=self.bottom_spatial_gain_min_percent.get(),
-                bottom_spatial_gain_step_percent=self.bottom_spatial_gain_step_percent.get(),
-                director_events_enabled=self.director_events_enabled.get(),
-                director_top_focus=self.director_top_focus.get(),
-                electrode_order=self.electrode_order.get(),
-                four_phase_acceleration_width_scale=self.four_phase_acceleration_width_scale.get(),
-                four_phase_adaptive_crossover=self.four_phase_adaptive_crossover.get(),
-                four_phase_crossover_curve=self.four_phase_crossover_curve.get(),
-                four_phase_crossover_sharpness=self.four_phase_crossover_sharpness.get(),
-                four_phase_crossover_width=self.four_phase_crossover_width.get(),
-                four_phase_deceleration_width_scale=self.four_phase_deceleration_width_scale.get(),
-                four_phase_directional_trajectory=self.four_phase_directional_trajectory.get(),
-                four_phase_fast_crossover_width=self.four_phase_fast_crossover_width.get(),
-                four_phase_full_depth_capture=self.four_phase_full_depth_capture.get(),
-                four_phase_group_delay=self.four_phase_group_delay.get(),
-                four_phase_group_delay_ms=self.four_phase_group_delay_ms.get(),
-                four_phase_group_delay_transition=self.four_phase_group_delay_transition.get(),
-                four_phase_invert=self.four_phase_invert.get(),
-                four_phase_moving_sequence=self.four_phase_moving_sequence.get(),
-                four_phase_moving_sequence_depth=self.four_phase_moving_sequence_depth.get(),
-                four_phase_moving_sequence_width=self.four_phase_moving_sequence_width.get(),
-                four_phase_return_depth=self.four_phase_return_depth.get(),
-                four_phase_reversal_emphasis=self.four_phase_reversal_emphasis.get(),
-                four_phase_reversal_strength=self.four_phase_reversal_strength.get(),
-                four_phase_reversal_window=self.four_phase_reversal_window.get(),
-                four_phase_reverse_curve=self.four_phase_reverse_curve.get(),
-                four_phase_reverse_sharpness=self.four_phase_reverse_sharpness.get(),
-                four_phase_reverse_width_scale=self.four_phase_reverse_width_scale.get(),
-                four_phase_slow_crossover_width=self.four_phase_slow_crossover_width.get(),
-                four_phase_spatial_model=self.four_phase_spatial_model.get(),
-                four_phase_spread_softness=self.four_phase_spread_softness.get(),
-                four_phase_stroke_phase_texture=self.four_phase_stroke_phase_texture.get(),
-                four_phase_tip_retention=self.four_phase_tip_retention.get(),
-                four_phase_volume_ceiling=self.four_phase_volume_ceiling.get(),
-                four_phase_volume_cycle=self.four_phase_volume_cycle.get(),
-                four_phase_volume_headroom=self.four_phase_volume_headroom.get(),
-                four_phase_volume_modulation=self.four_phase_volume_modulation.get(),
-                howl_balance_a=self.howl_balance_a.get(),
-                howl_balance_b=self.howl_balance_b.get(),
-                howl_boost=self.howl_boost.get(),
-                howl_freq_max=self.howl_freq_max.get(),
-                howl_freq_min=self.howl_freq_min.get(),
-                howl_pan=self.howl_pan.get(),
-                howl_position_strength=self.howl_position_strength.get(),
-                howl_pulse=self.howl_pulse.get(),
-                howl_scaling=self.howl_scaling.get(),
-                howl_sigma=self.howl_sigma.get(),
-                howl_thump=self.howl_thump.get(),
-                howl_width=self.howl_width.get(),
-                match_spatial_intensity=self.match_spatial_intensity.get(),
-                motion_falling_volume_multiplier=self.motion_falling_volume_multiplier.get(),
-                motion_rising_volume_multiplier=self.motion_rising_volume_multiplier.get(),
-                spatial_gain_ramp_percent_per_second=self.spatial_gain_ramp_percent_per_second.get(),
-                speed_linked_variation=self.speed_linked_variation.get(),
-                top_focus_nominal_ceiling=self.top_focus_nominal_ceiling.get(),
-                top_focus_strength=self.top_focus_strength.get(),
-                top_spatial_gain_max_percent=self.top_spatial_gain_max_percent.get(),
-                top_spatial_gain_min_percent=self.top_spatial_gain_min_percent.get(),
-                top_spatial_gain_step_percent=self.top_spatial_gain_step_percent.get(),
-                variety_electrode_morph=self.variety_electrode_morph.get(),
-                variety_electrode_morph_cycle=self.variety_electrode_morph_cycle.get(),
-                variety_electrode_morph_transition_seconds=self.variety_electrode_morph_transition_seconds.get(),
-                variety_enabled=self.variety_enabled.get(),
-                volume=self.volume.get(),
-                custom_curves=freeze_curves(self._custom_curves),
-                variety_started=self._variety_started,
-                magik_keyframe_arcs=self.magik_keyframe_arcs.get(),
-                frequency_damping=min(MAX_PULSE_DAMPING_SECONDS["frequency"],
-                                      max(0.0, self.frequency_damping.get())),
-                pulse_frequency_damping=min(MAX_PULSE_DAMPING_SECONDS["pulse_frequency"],
-                                            max(0.0, self.pulse_frequency_damping.get())),
-                pulse_rise_damping=min(MAX_PULSE_DAMPING_SECONDS["pulse_rise"],
-                                       max(0.0, self.pulse_rise_damping.get())),
-                pulse_width_damping=min(MAX_PULSE_DAMPING_SECONDS["pulse_width"],
-                                        max(0.0, self.pulse_width_damping.get())))
+            values = {name: getattr(self, name).get() for name in OUTPUT_CONFIG_SETTINGS}
+            for axis, limit in MAX_PULSE_DAMPING_SECONDS.items():
+                name = f"{axis}_damping"
+                values[name] = min(limit, max(0.0, values[name]))
+            snapshot = OutputConfig(**values, custom_curves=freeze_curves(self._custom_curves),
+                                    variety_started=self._variety_started)
         except tk.TclError:
             return
         self._output_config = snapshot

@@ -62,7 +62,7 @@ class SignalQualityPopoutTests(unittest.TestCase):
             view.popout_panel.last_refresh = -float('inf')
             view.refresh()
         self.assertEqual(view.popout_panel.stats.set('V0', 'latest'), '42.00')
-        self.assertTrue(view.popout_panel.canvas.find_withtag('V0'))
+        self.assertTrue(view.popout_panel.plotted['V0'])
         app._save_settings.assert_not_called()
         for action in self.actions.values():
             action.assert_not_called()

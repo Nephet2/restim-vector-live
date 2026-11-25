@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import ttk
 from statistics import fmean
 
+from .antialias_canvas import painter, present
 from .tcode import parse_message
 
 
@@ -45,10 +46,37 @@ def trace_segments(history, axes, cutoff):
     return segments
 
 
+def column_extrema(points):
+    """Reduce a left-to-right trace to at most four points per pixel column.
+
+    Each column keeps its first point, its lowest and highest points and its last
+    point, in time order, as an oscilloscope does.  Every peak stays visible and
+    dense traces no longer draw several zig-zagging samples into one column.
+    """
+    reduced = []
+    start = 0
+    while start < len(points):
+        column = int(points[start][0])
+        end = start + 1
+        while end < len(points) and int(points[end][0]) == column:
+            end += 1
+        if end - start <= 4:
+            reduced.extend(points[start:end])
+        else:
+            group = range(start, end)
+            low = min(group, key=lambda index: points[index][1])
+            high = max(group, key=lambda index: points[index][1])
+            reduced.extend(points[index] for index in sorted({start, low, high, end - 1}))
+        start = end
+    return reduced
+
+
 class SignalQualityPanel:
     def __init__(self, panel, primary, prostate, popout=None):
         self.clients = {"Primary": primary, "Prostate": prostate}
         self.last_refresh = -float("inf")
+        # Display coordinates of each drawn trace, by axis (one list per segment).
+        self.plotted = {}
         toolbar = ttk.Frame(panel)
         toolbar.pack(fill="x", pady=(0, 5))
         self.endpoint = self._selector(toolbar, "Output", tuple(self.clients), 11)
@@ -149,12 +177,16 @@ class SignalQualityPanel:
                 self.stats.insert("", index, iid=axis, values=row)
 
     def _draw(self, traces, now, seconds):
-        canvas = self.canvas
+        # With Pillow, traces are drawn at twice the size and averaged down
+        # (anti-aliased); labels stay native Tk text.  Without it, plain Tk lines.
+        self.plotted = {}
+        if self.canvas.winfo_width() <= 56 or self.canvas.winfo_height() <= 35:
+            self.canvas.delete("all")
+            return
+        canvas = painter(self.canvas, fast=True)
         canvas.delete("all")
         left, right = 40, canvas.winfo_width() - 16
         top, bottom = 12, canvas.winfo_height() - 23
-        if right <= left or bottom <= top:
-            return
         for value in (0, 25, 50, 75, 100):
             y = bottom - (bottom - top) * value / 100
             canvas.create_line(left, y, right, y, fill="#34475c")
@@ -166,13 +198,17 @@ class SignalQualityPanel:
             canvas.create_text(x, bottom + 12, text=label, fill="#bdcad9")
         for axis, segments in traces.items():
             color = TRACE_COLORS[axis]
+            lines = self.plotted[axis] = []
             for segment in segments:
-                points = [(right - (right - left) * max(0.0, now - ts) / seconds,
-                           bottom - (bottom - top) * value / 100)
-                          for ts, value in segment]
+                points = column_extrema([(right - (right - left) * max(0.0, now - ts) / seconds,
+                                          bottom - (bottom - top) * value / 100)
+                                         for ts, value in segment])
+                lines.append(points)
                 if len(points) == 1:
                     x, y = points[0]
                     canvas.create_oval(x - 2, y - 2, x + 2, y + 2, fill=color,
                                        outline="", tags=(axis,))
                 else:
-                    canvas.create_line(points, fill=color, width=2, tags=(axis,))
+                    canvas.create_line(*(v for point in points for v in point),
+                                       fill=color, width=2, tags=(axis,))
+        present(canvas)

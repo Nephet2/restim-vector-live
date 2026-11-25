@@ -2,6 +2,7 @@ import unittest
 import time
 from unittest.mock import patch
 from vector1a.diagnostics_panel import age,transport_text
+from vector1a.signal_quality_panel import TRACE_COLORS
 from test_navigation import NavigationTests
 
 class TransportFormatTests(unittest.TestCase):
@@ -66,18 +67,18 @@ class DiagnosticsPanelTests(unittest.TestCase):
    quality.axis_checks['P0'].invoke()
    self.assertEqual(quality.stats.get_children(), ('V0', 'P0'))
    self.assertEqual(quality.stats.set('P0', 'latest'), '60.00')
-   v0, = quality.canvas.find_withtag('V0')
-   p0, = quality.canvas.find_withtag('P0')
-   self.assertNotEqual(quality.canvas.itemcget(v0, 'fill'), quality.canvas.itemcget(p0, 'fill'))
-   self.assertEqual(quality.canvas.coords(v0)[::2], quality.canvas.coords(p0)[::2])
+   v0, = quality.plotted['V0']
+   p0, = quality.plotted['P0']
+   self.assertNotEqual(TRACE_COLORS['V0'], TRACE_COLORS['P0'])
+   self.assertEqual([x for x, _ in v0], [x for x, _ in p0])
    quality.endpoint.current(1)
    quality.refresh(force=True)
    self.assertEqual(quality.stats.set('V0', 'latest'), '12.34')
    self.assertEqual(quality.stats.set('P0', 'count'), '0')
-   self.assertFalse(quality.canvas.find_withtag('P0'))
+   self.assertFalse(quality.plotted['P0'])
    quality.axis_checks['V0'].invoke()
    self.assertEqual(quality.stats.get_children(), ('P0',))
-   self.assertFalse(quality.canvas.find_withtag('V0'))
+   self.assertNotIn('V0', quality.plotted)
    quality.axis_checks['P0'].invoke()
    self.assertEqual(quality.stats.get_children(), ())
    self.assertIn('Select an axis to plot', quality.summary.get())
